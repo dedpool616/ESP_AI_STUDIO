@@ -1,0 +1,32 @@
+appId: io.github.dedpool616.espaistudio
+productName: ESP AI Studio
+
+directories:
+  buildResources: build
+
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.{js,ts,mjs,cjs}'
+  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+
+asarUnpack:
+  - resources/**
+
+win:
+  target:
+    - nsis
+  executableName: ESP-AI-Studio
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  artifactName: ESP-AI-Studio-Setup-${version}.${ext}
+  shortcutName: ESP AI Studio
+  uninstallDisplayName: ESP AI Studio
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+
+npmRebuild: false
