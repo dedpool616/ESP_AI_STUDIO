@@ -483,3 +483,142 @@ button {
 .create-button:hover {
   background: #356bf6;
 }
+
+.project-dashboard {
+  max-width: 950px;
+}
+
+.dashboard-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.dashboard-heading h2 {
+  margin: 0;
+  font-size: 30px;
+}
+
+.dashboard-heading p {
+  margin: 8px 0 0;
+  color: #858c9b;
+  font-size: 13px;
+}
+
+.new-project-small {
+  height: 38px;
+  padding: 0 15px;
+  border: 1px solid #3b6cff;
+  border-radius: 8px;
+  background: #244fc4;
+  cursor: pointer;
+}
+
+.new-project-small:hover {
+  background: #2b5bd8;
+}
+
+.project-info-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(3, minmax(160px, 1fr));
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.info-card {
+  min-height: 92px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 16px;
+  border: 1px solid #303540;
+  border-radius: 10px;
+  background: #171a20;
+}
+
+.info-card span {
+  color: #858c9b;
+  font-size: 11px;
+}
+
+.info-card strong {
+  margin-top: 12px;
+  font-size: 14px;
+}
+
+.dashboard-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.dashboard-actions button {
+  min-width: 120px;
+  height: 38px;
+  padding: 0 15px;
+  border: 1px solid #363c47;
+  border-radius: 8px;
+  background: #20242b;
+  cursor: pointer;
+}
+
+.dashboard-actions button:hover {
+  border-color: #4e5e80;
+  background: #272c35;
+}
+
+.recent-project-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.recent-project-card {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 14px 16px;
+  border: 1px solid #303540;
+  border-radius: 9px;
+  background: #171a20;
+  text-align: left;
+  cursor: pointer;
+}
+
+.recent-project-card:hover {
+  border-color: #46526a;
+  background: #1d2128;
+}
+
+.recent-project-card strong,
+.recent-project-card span {
+  display: block;
+}
+
+.recent-project-card strong {
+  font-size: 13px;
+}
+
+.recent-project-card span {
+  margin-top: 5px;
+  color: #858c9b;
+  font-size: 10px;
+}
+
+.recent-project-card small {
+  flex-shrink: 0;
+  color: #aeb5c2;
+}
+
+@media (max-width: 900px) {
+  .project-info-grid {
+    grid-template-columns:
+      repeat(2, minmax(150px, 1fr));
+  }
+}

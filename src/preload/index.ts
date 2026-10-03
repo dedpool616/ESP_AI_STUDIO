@@ -1,15 +1,26 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 
-// Custom APIs for renderer
 const api = {
   selectFolder: (): Promise<string | null> => {
     return ipcRenderer.invoke('dialog:select-folder')
+  },
+
+  createProject: (options: {
+    projectName: string
+    location: string
+    board: string
+    idfVersion: string
+    gitMode: 'local' | 'github' | 'none'
+  }): Promise<{
+    success: boolean
+    projectPath?: string
+    error?: string
+  }> => {
+    return ipcRenderer.invoke('project:create', options)
   }
 }
-// Use `contextBridge` APIs to expose Electron APIs to
-// renderer only if context isolation is enabled, otherwise
-// just add to the DOM global.
+
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electron', electronAPI)
@@ -18,8 +29,9 @@ if (process.contextIsolated) {
     console.error(error)
   }
 } else {
-  // @ts-ignore (define in dts)
+  // @ts-ignore
   window.electron = electronAPI
-  // @ts-ignore (define in dts)
+
+  // @ts-ignore
   window.api = api
 }

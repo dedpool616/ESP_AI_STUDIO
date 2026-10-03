@@ -1,16 +1,39 @@
 import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
-import { join } from 'path'
+import { join, resolve } from 'path'
+import { mkdir, writeFile, access } from 'fs/promises'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 
+const execFileAsync = promisify(execFile)
+
+interface CreateProjectRequest {
+  projectName: string
+  location: string
+  board: string
+  idfVersion: string
+  gitMode: 'local' | 'github' | 'none'
+}
+
+interface CreateProjectResult {
+  success: boolean
+  projectPath?: string
+  error?: string
+}
+
 function createWindow(): void {
-  // Create the browser window.
   const mainWindow = new BrowserWindow({
-    width: 900,
-    height: 670,
+    width: 1100,
+    height: 760,
+    minWidth: 850,
+    minHeight: 600,
+    title: 'ESP AI Studio',
     show: false,
     autoHideMenuBar: true,
+
     ...(process.platform === 'linux' ? { icon } : {}),
+
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false
@@ -23,11 +46,12 @@ function createWindow(): void {
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
-    return { action: 'deny' }
+
+    return {
+      action: 'deny'
+    }
   })
 
-  // HMR for renderer base on electron-vite cli.
-  // Load the remote URL for development or the local html file for production.
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
@@ -35,23 +59,16 @@ function createWindow(): void {
   }
 }
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
-  // Set app user model id for Windows
   electronApp.setAppUserModelId('io.github.dedpool616.espaistudio')
 
-  // Default open or close DevTools by F12 in development
-  // and ignore CommandOrControl + R in production.
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  // IPC test
-  ipcMain.on('ping', () => console.log('pong'))
-
-  // Open Windows folder selection dialog
+  /*
+   * Folder selection
+   */
   ipcMain.handle('dialog:select-folder', async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openDirectory', 'createDirectory']
@@ -64,22 +81,189 @@ app.whenReady().then(() => {
     return result.filePaths[0]
   })
 
+  /*
+   * Create new ESP-IDF project
+   */
+  ipcMain.handle(
+    'project:create',
+    async (_, request: CreateProjectRequest): Promise<CreateProjectResult> => {
+      try {
+        const projectName = request.projectName.trim()
+        const location = request.location.trim()
+
+        if (!projectName) {
+          return {
+            success: false,
+            error: 'Project name is required.'
+          }
+        }
+
+        if (!location) {
+          return {
+            success: false,
+            error: 'Project location is required.'
+          }
+        }
+
+        /*
+         * Для ESP-IDF лучше пока использовать простые имена
+         * без пробелов и специальных символов.
+         */
+        const validProjectName = /^[A-Za-z0-9_-]+$/
+
+        if (!validProjectName.test(projectName)) {
+          return {
+            success: false,
+            error:
+              'Project name may contain only letters, numbers, "_" and "-".'
+          }
+        }
+
+        if (request.gitMode === 'github') {
+          return {
+            success: false,
+            error:
+              'GitHub integration is not connected yet. Use Local Git or No Git for now.'
+          }
+        }
+
+        const projectPath = resolve(location, projectName)
+
+        /*
+         * Не разрешаем случайно перезаписать существующую папку.
+         */
+        try {
+          await access(projectPath)
+
+          return {
+            success: false,
+            error: `Folder already exists: ${projectPath}`
+          }
+        } catch {
+          // Папки нет — можно создавать.
+        }
+
+        const mainDirectory = join(projectPath, 'main')
+
+        await mkdir(mainDirectory, {
+          recursive: true
+        })
+
+        /*
+         * Root CMakeLists.txt
+         */
+        const rootCMake = `cmake_minimum_required(VERSION 3.16)
+
+include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+
+project(${projectName})
+`
+
+        /*
+         * main/CMakeLists.txt
+         */
+        const mainCMake = `idf_component_register(
+    SRCS "main.c"
+    INCLUDE_DIRS "."
+)
+`
+
+        /*
+         * main/main.c
+         */
+        const mainC = `#include <stdio.h>
+
+void app_main(void)
+{
+    printf("Hello from ESP AI Studio!\\n");
+}
+`
+
+        /*
+         * Basic Git ignore
+         */
+        const gitIgnore = `build/
+*.log
+sdkconfig.old
+`
+
+        await writeFile(
+          join(projectPath, 'CMakeLists.txt'),
+          rootCMake,
+          'utf8'
+        )
+
+        await writeFile(
+          join(mainDirectory, 'CMakeLists.txt'),
+          mainCMake,
+          'utf8'
+        )
+
+        await writeFile(
+          join(mainDirectory, 'main.c'),
+          mainC,
+          'utf8'
+        )
+
+        await writeFile(
+          join(projectPath, '.gitignore'),
+          gitIgnore,
+          'utf8'
+        )
+
+        /*
+         * Local Git initialization.
+         */
+        if (request.gitMode === 'local') {
+          await execFileAsync(
+            'git',
+            ['init'],
+            {
+              cwd: projectPath
+            }
+          )
+
+          /*
+           * Главную ветку называем main.
+           */
+          await execFileAsync(
+            'git',
+            ['branch', '-M', 'main'],
+            {
+              cwd: projectPath
+            }
+          )
+        }
+
+        return {
+          success: true,
+          projectPath
+        }
+      } catch (error) {
+        console.error('Project creation failed:', error)
+
+        return {
+          success: false,
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Unknown error while creating project.'
+        }
+      }
+    }
+  )
+
   createWindow()
+
   app.on('activate', function () {
-    // On macOS it's common to re-create a window in the app when the
-    // dock icon is clicked and there are no other windows open.
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow()
+    }
   })
 })
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
 })
-
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and require them here.
