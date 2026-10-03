@@ -330,3 +330,156 @@ button {
     grid-template-columns: 1fr;
   }
 }
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(4, 6, 10, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+.project-modal {
+  width: min(560px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  border: 1px solid #353b47;
+  border-radius: 14px;
+  background: #181b21;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+}
+
+.modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 22px 24px;
+  border-bottom: 1px solid #292d36;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.modal-header p {
+  margin: 5px 0 0;
+  color: #858c9b;
+  font-size: 12px;
+}
+
+.close-button {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #aeb4c0;
+  font-size: 24px;
+  cursor: pointer;
+}
+
+.close-button:hover {
+  background: #252932;
+  color: #ffffff;
+}
+
+.modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 24px;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.form-field > span {
+  font-size: 12px;
+  font-weight: 600;
+  color: #d7dbe3;
+}
+
+.form-field small {
+  color: #747c8b;
+  font-size: 10px;
+}
+
+.form-field input,
+.form-field select {
+  width: 100%;
+  height: 40px;
+  padding: 0 11px;
+  border: 1px solid #353b47;
+  border-radius: 8px;
+  outline: none;
+  background: #111318;
+  color: #f2f4f8;
+}
+
+.form-field input:focus,
+.form-field select:focus {
+  border-color: #4775ff;
+}
+
+.location-row {
+  display: flex;
+  gap: 8px;
+}
+
+.location-row input {
+  flex: 1;
+}
+
+.browse-button {
+  padding: 0 16px;
+  border: 1px solid #3b414d;
+  border-radius: 8px;
+  background: #242831;
+  cursor: pointer;
+}
+
+.browse-button:hover {
+  background: #2d323c;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 24px;
+  border-top: 1px solid #292d36;
+}
+
+.cancel-button,
+.create-button {
+  min-width: 110px;
+  height: 38px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.cancel-button {
+  border: 1px solid #3b414d;
+  background: #22262e;
+}
+
+.cancel-button:hover {
+  background: #2b3039;
+}
+
+.create-button {
+  border: 1px solid #4775ff;
+  background: #2c60e8;
+  font-weight: 600;
+}
+
+.create-button:hover {
+  background: #356bf6;
+}

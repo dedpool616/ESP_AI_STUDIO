@@ -1,4 +1,17 @@
+import { useState } from 'react'
+
 function App(): React.JSX.Element {
+  const [showNewProject, setShowNewProject] = useState(false)
+  const [projectLocation, setProjectLocation] = useState('')
+
+  const handleBrowse = async (): Promise<void> => {
+    const folder = await window.api.selectFolder()
+
+    if (folder) {
+      setProjectLocation(folder)
+    }
+  }
+
   const navigation = [
     'Home',
     'AI',
@@ -54,6 +67,7 @@ function App(): React.JSX.Element {
         <section className="home-content">
           <div className="welcome">
             <h2>Добро пожаловать</h2>
+
             <p>
               Создай новый ESP-IDF проект или открой существующий. AI можно
               подключить на любом этапе работы.
@@ -61,7 +75,11 @@ function App(): React.JSX.Element {
           </div>
 
           <div className="project-actions">
-            <button className="primary-action" type="button">
+            <button
+              className="primary-action"
+              type="button"
+              onClick={() => setShowNewProject(true)}
+            >
               <span className="action-symbol">+</span>
 
               <span>
@@ -108,6 +126,112 @@ function App(): React.JSX.Element {
           <span>AI: Not connected</span>
         </footer>
       </main>
+
+      {showNewProject && (
+        <div className="modal-overlay">
+          <div className="project-modal">
+            <div className="modal-header">
+              <div>
+                <h2>New Project</h2>
+                <p>Создание нового ESP-IDF проекта</p>
+              </div>
+
+              <button
+                className="close-button"
+                type="button"
+                onClick={() => setShowNewProject(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="modal-content">
+              <label className="form-field">
+                <span>Project name</span>
+
+                <input
+                  type="text"
+                  placeholder="MyESPProject"
+                />
+              </label>
+
+              <label className="form-field">
+                <span>Location</span>
+
+                <div className="location-row">
+                  <input
+                    type="text"
+                    value={projectLocation}
+                    placeholder="Выберите папку проекта"
+                    readOnly
+                  />
+
+                  <button
+                    type="button"
+                    className="browse-button"
+                    onClick={handleBrowse}
+                  >
+                    Browse
+                  </button>
+                </div>
+              </label>
+
+              <label className="form-field">
+                <span>Board</span>
+
+                <select defaultValue="">
+                  <option value="">Not selected</option>
+                  <option value="esp32">ESP32</option>
+                  <option value="esp32s2">ESP32-S2</option>
+                  <option value="esp32s3">ESP32-S3</option>
+                  <option value="esp32c3">ESP32-C3</option>
+                  <option value="esp32c6">ESP32-C6</option>
+                </select>
+
+                <small>Можно выбрать позже.</small>
+              </label>
+
+              <label className="form-field">
+                <span>ESP-IDF version</span>
+
+                <select defaultValue="recommended">
+                  <option value="recommended">Recommended</option>
+                  <option value="later">Select later</option>
+                </select>
+
+                <small>Конкретную версию можно изменить позже.</small>
+              </label>
+
+              <label className="form-field">
+                <span>Git</span>
+
+                <select defaultValue="local">
+                  <option value="local">Local Git</option>
+                  <option value="github">Git + GitHub</option>
+                  <option value="none">No Git</option>
+                </select>
+              </label>
+            </div>
+
+            <div className="modal-actions">
+              <button
+                className="cancel-button"
+                type="button"
+                onClick={() => setShowNewProject(false)}
+              >
+                Cancel
+              </button>
+
+              <button
+                className="create-button"
+                type="button"
+              >
+                Create Project
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
