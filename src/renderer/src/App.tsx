@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import CodeEditorPage from './pages/CodeEditorPage'
 
 interface ProjectInfo {
   name: string
@@ -26,6 +27,8 @@ function App(): React.JSX.Element {
 
   const [recentProjects, setRecentProjects] =
     useState<ProjectInfo[]>([])
+
+  const [activePage, setActivePage] = useState('Home')
 
   const navigation = [
     'Home',
@@ -176,9 +179,10 @@ function App(): React.JSX.Element {
             <button
               key={item}
               className={`nav-item ${
-                item === 'Home' ? 'active' : ''
+                item === activePage ? 'active' : ''
               }`}
               type="button"
+	      onClick={() => setActivePage(item)}
             >
               {item}
             </button>
@@ -208,207 +212,198 @@ function App(): React.JSX.Element {
           </div>
         </header>
 
-        <section className="home-content">
-          {!currentProject && (
-            <>
-              <div className="welcome">
-                <h2>Добро пожаловать</h2>
+<section className="home-content">
+  {activePage === 'Home' && (
+    <>
+      {!currentProject && (
+        <>
+          <div className="welcome">
+            <h2>Добро пожаловать</h2>
 
-                <p>
-                  Создай новый ESP-IDF проект или открой существующий.
-                  AI можно подключить на любом этапе работы.
-                </p>
-              </div>
+            <p>
+              Создай новый ESP-IDF проект или открой существующий.
+              AI можно подключить на любом этапе работы.
+            </p>
+          </div>
 
-              <div className="project-actions">
-                <button
-                  className="primary-action"
-                  type="button"
-                  onClick={() =>
-                    setShowNewProject(true)
-                  }
-                >
-                  <span className="action-symbol">
-                    +
-                  </span>
+          <div className="project-actions">
+            <button
+              className="primary-action"
+              type="button"
+              onClick={() => setShowNewProject(true)}
+            >
+              <span className="action-symbol">+</span>
 
-                  <span>
-                    <strong>
-                      New Project
-                    </strong>
+              <span>
+                <strong>New Project</strong>
+                <small>Создать новый ESP-IDF проект</small>
+              </span>
+            </button>
 
-                    <small>
-                      Создать новый ESP-IDF проект
-                    </small>
-                  </span>
-                </button>
+            <button
+              className="secondary-action"
+              type="button"
+            >
+              <span className="action-symbol">↗</span>
 
-                <button
-                  className="secondary-action"
-                  type="button"
-                >
-                  <span className="action-symbol">
-                    ↗
-                  </span>
+              <span>
+                <strong>Open Project</strong>
+                <small>Открыть существующий проект</small>
+              </span>
+            </button>
+          </div>
+        </>
+      )}
 
-                  <span>
-                    <strong>
-                      Open Project
-                    </strong>
+      {currentProject && (
+        <section className="project-dashboard">
+          <div className="dashboard-heading">
+            <div>
+              <h2>{currentProject.name}</h2>
 
-                    <small>
-                      Открыть существующий проект
-                    </small>
-                  </span>
-                </button>
-              </div>
-            </>
-          )}
+              <p>
+                Проект открыт и готов к работе.
+              </p>
+            </div>
+          </div>
 
-          {currentProject && (
-            <section className="project-dashboard">
-              <div className="dashboard-heading">
-                <div>
-                  <h2>{currentProject.name}</h2>
+          <div className="project-info-grid">
+            <div className="info-card">
+              <span>Board</span>
 
-                  <p>
-                    Проект открыт и готов к работе.
-                  </p>
-                </div>
-
-                <button
-                  className="new-project-small"
-                  type="button"
-                  onClick={() =>
-                    setShowNewProject(true)
-                  }
-                >
-                  + New Project
-                </button>
-              </div>
-
-              <div className="project-info-grid">
-                <div className="info-card">
-                  <span>Board</span>
-                  <strong>
-                    {formatBoard(
-                      currentProject.board
-                    )}
-                  </strong>
-                </div>
-
-                <div className="info-card">
-                  <span>ESP-IDF</span>
-                  <strong>
-                    {formatIdfVersion(
-                      currentProject.idfVersion
-                    )}
-                  </strong>
-                </div>
-
-                <div className="info-card">
-                  <span>Git</span>
-                  <strong>
-                    {formatGitMode(
-                      currentProject.gitMode
-                    )}
-                  </strong>
-                </div>
-
-                <div className="info-card">
-                  <span>Build</span>
-                  <strong>Not built</strong>
-                </div>
-
-                <div className="info-card">
-                  <span>Port</span>
-                  <strong>Not connected</strong>
-                </div>
-
-                <div className="info-card">
-                  <span>AI</span>
-                  <strong>Not connected</strong>
-                </div>
-              </div>
-
-              <div className="dashboard-actions">
-                <button type="button">
-                  Code Editor
-                </button>
-
-                <button type="button">
-                  Build
-                </button>
-
-                <button type="button">
-                  AI
-                </button>
-
-                <button type="button">
-                  Monitor
-                </button>
-              </div>
-            </section>
-          )}
-
-          <section className="recent-section">
-            <div className="section-heading">
-              <div>
-                <h3>Recent Projects</h3>
-
-                <p>
-                  Недавно открытые проекты.
-                </p>
-              </div>
+              <strong>
+                {formatBoard(currentProject.board)}
+              </strong>
             </div>
 
-            {recentProjects.length === 0 ? (
-              <div className="empty-projects">
-                <div className="empty-icon">
-                  {'{ }'}
+            <div className="info-card">
+              <span>ESP-IDF</span>
+
+              <strong>
+                {formatIdfVersion(currentProject.idfVersion)}
+              </strong>
+            </div>
+
+            <div className="info-card">
+              <span>Git</span>
+
+              <strong>
+                {formatGitMode(currentProject.gitMode)}
+              </strong>
+            </div>
+
+            <div className="info-card">
+              <span>Build</span>
+              <strong>Not built</strong>
+            </div>
+
+            <div className="info-card">
+              <span>Port</span>
+              <strong>Not connected</strong>
+            </div>
+
+            <div className="info-card">
+              <span>AI</span>
+              <strong>Not connected</strong>
+            </div>
+          </div>
+
+          <div className="dashboard-actions">
+            <button
+              type="button"
+              onClick={() => setActivePage('Code Editor')}
+            >
+              Code Editor
+            </button>
+
+            <button type="button">
+              Build
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActivePage('AI')}
+            >
+              AI
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActivePage('Monitor')}
+            >
+              Monitor
+            </button>
+          </div>
+        </section>
+      )}
+
+      <section className="recent-section">
+        <div className="section-heading">
+          <div>
+            <h3>Recent Projects</h3>
+
+            <p>
+              Недавно открытые проекты.
+            </p>
+          </div>
+        </div>
+
+        {recentProjects.length === 0 ? (
+          <div className="empty-projects">
+            <div className="empty-icon">
+              {'{ }'}
+            </div>
+
+            <h4>
+              Проектов пока нет
+            </h4>
+
+            <p>
+              Создай первый проект или открой уже существующий
+              ESP-IDF проект.
+            </p>
+          </div>
+        ) : (
+          <div className="recent-project-list">
+            {recentProjects.map((project) => (
+              <button
+                key={project.path}
+                type="button"
+                className="recent-project-card"
+                onClick={() => {
+                  setCurrentProject(project)
+                  setActivePage('Home')
+                }}
+              >
+                <div>
+                  <strong>
+                    {project.name}
+                  </strong>
+
+                  <span>
+                    {project.path}
+                  </span>
                 </div>
 
-                <h4>
-                  Проектов пока нет
-                </h4>
+                <small>
+                  {formatBoard(project.board)}
+                </small>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+    </>
+  )}
 
-                <p>
-                  Создай первый проект или открой уже существующий
-                  ESP-IDF проект.
-                </p>
-              </div>
-            ) : (
-              <div className="recent-project-list">
-                {recentProjects.map((project) => (
-                  <button
-                    key={project.path}
-                    type="button"
-                    className="recent-project-card"
-                    onClick={() =>
-                      setCurrentProject(project)
-                    }
-                  >
-                    <div>
-                      <strong>
-                        {project.name}
-                      </strong>
+  {activePage === 'Code Editor' && (
+    <CodeEditorPage
+      projectName={currentProject?.name}
+    />
+  )}
+</section>
 
-                      <span>
-                        {project.path}
-                      </span>
-                    </div>
-
-                    <small>
-                      {formatBoard(project.board)}
-                    </small>
-                  </button>
-                ))}
-              </div>
-            )}
-          </section>
-        </section>
-
-        <footer className="statusbar">
+<footer className="statusbar">
           <span>
             ESP:{' '}
             {currentProject

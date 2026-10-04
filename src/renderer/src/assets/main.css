@@ -622,3 +622,121 @@ button {
       repeat(2, minmax(150px, 1fr));
   }
 }
+
+.code-editor-page {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.code-editor-toolbar {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  border-bottom: 1px solid #292d36;
+  background: #15171c;
+}
+
+.code-editor-toolbar > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.code-editor-toolbar strong {
+  font-size: 13px;
+}
+
+.code-editor-toolbar span {
+  color: #858c9b;
+  font-size: 11px;
+}
+
+.code-editor-layout {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.project-tree {
+  width: 230px;
+  min-width: 180px;
+  border-right: 1px solid #292d36;
+  background: #15171c;
+}
+
+.project-tree-title {
+  padding: 12px 14px;
+  color: #858c9b;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+}
+
+.project-tree-empty {
+  padding: 10px 14px;
+  color: #6f7683;
+  font-size: 11px;
+}
+
+.editor-area {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-tabs {
+  height: 36px;
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid #292d36;
+  background: #17191f;
+}
+
+.editor-tab {
+  min-width: 120px;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  color: #9ca3af;
+  font-size: 11px;
+  border-right: 1px solid #292d36;
+}
+
+.editor-tab.active {
+  background: #101216;
+  color: #ffffff;
+}
+
+.monaco-container {
+  flex: 1;
+  min-height: 0;
+}
+
+.editor-bottom-panel {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  border-top: 1px solid #292d36;
+  background: #17191f;
+}
+
+.editor-bottom-panel button {
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: #858c9b;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.editor-bottom-panel button:hover {
+  color: #ffffff;
+  background: #22262e;
+}
