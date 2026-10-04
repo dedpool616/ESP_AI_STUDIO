@@ -212,7 +212,14 @@ function App(): React.JSX.Element {
           </div>
         </header>
 
-<section className="home-content">
+<section
+  className={`home-content ${
+    activePage === 'Code Editor'
+      ? 'code-editor-host'
+      : ''
+  }`}
+>
+
   {activePage === 'Home' && (
     <>
       {!currentProject && (
@@ -399,6 +406,7 @@ function App(): React.JSX.Element {
   {activePage === 'Code Editor' && (
     <CodeEditorPage
       projectName={currentProject?.name}
+      projectPath={currentProject?.path}
     />
   )}
 </section>
