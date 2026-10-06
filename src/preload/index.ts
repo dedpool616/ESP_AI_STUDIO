@@ -26,6 +26,13 @@ const api = {
       )
     },
 
+    openProject: () => {
+    return ipcRenderer.invoke(
+      'project:open'
+    )
+  },
+
+
   createProject: (
     options: CreateProjectOptions
   ) => {

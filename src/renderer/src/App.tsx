@@ -22,6 +22,11 @@ function App(): React.JSX.Element {
 
   const [isCreating, setIsCreating] = useState(false)
 
+  const [
+  projectFormError,
+  setProjectFormError
+] = useState('')
+
   const [currentProject, setCurrentProject] =
     useState<ProjectInfo | null>(null)
 
@@ -44,6 +49,71 @@ function App(): React.JSX.Element {
     'Settings'
   ]
 
+const handleOpenProject =
+  async (): Promise<void> => {
+    const result =
+      await window.api.openProject()
+
+    if (result.canceled) {
+      return
+    }
+
+    if (
+      !result.success ||
+      !result.project
+    ) {
+      window.alert(
+        `Не удалось открыть проект.\n\n${
+          result.error ??
+          'Unknown error'
+        }`
+      )
+
+      return
+    }
+
+    const openedProject:
+      ProjectInfo = {
+        name:
+          result.project.name,
+
+        path:
+          result.project.path,
+
+        board:
+          result.project.board,
+
+        idfVersion:
+          result.project.idfVersion,
+
+        gitMode:
+          result.project.gitMode
+      }
+
+    setCurrentProject(
+      openedProject
+    )
+
+    setRecentProjects(
+      (projects) => {
+        const filtered =
+          projects.filter(
+            (project) =>
+              project.path !==
+              openedProject.path
+          )
+
+        return [
+          openedProject,
+          ...filtered
+        ].slice(0, 8)
+      }
+    )
+
+    setActivePage('Home')
+  }
+
+
   const handleBrowse = async (): Promise<void> => {
     const folder = await window.api.selectFolder()
 
@@ -60,16 +130,25 @@ function App(): React.JSX.Element {
     setGitMode('local')
   }
 
-  const handleCreateProject = async (): Promise<void> => {
-    if (!projectName.trim()) {
-      window.alert('Введите имя проекта.')
-      return
-    }
+  const handleCreateProject = 
+    async (): Promise<void> => {
+      setProjectFormError('')
+      
+      if (!projectName.trim()) {
+  setProjectFormError(
+    'Введите имя проекта.'
+  )
+
+  return
+}
 
     if (!projectLocation) {
-      window.alert('Выберите папку для проекта.')
-      return
-    }
+  setProjectFormError(
+    'Выберите папку для проекта.'
+  )
+
+  return
+}
 
     setIsCreating(true)
 
@@ -250,6 +329,9 @@ function App(): React.JSX.Element {
             <button
               className="secondary-action"
               type="button"
+              onClick={() => {
+                void handleOpenProject()
+              }}
             >
               <span className="action-symbol">↗</span>
 
@@ -612,6 +694,12 @@ function App(): React.JSX.Element {
                 </select>
               </label>
             </div>
+
+            {projectFormError && (
+              <div className="project-form-error">
+                {projectFormError}
+              </div>
+            )}
 
             <div className="modal-actions">
               <button

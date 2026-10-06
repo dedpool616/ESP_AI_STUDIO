@@ -26,6 +26,23 @@ interface CreateProjectResult {
   error?: string
 }
 
+interface OpenProjectInfo {
+  name: string
+  path: string
+  board: string
+  idfVersion: string
+  gitMode:
+    | 'local'
+    | 'none'
+}
+
+interface OpenProjectResult {
+  success: boolean
+  canceled?: boolean
+  project?: OpenProjectInfo
+  error?: string
+}
+
 interface ProjectTreeResult {
   success: boolean
   tree: ProjectTreeNode[]
@@ -46,6 +63,9 @@ interface SaveFileResult {
 interface ESPAIStudioAPI {
   selectFolder:
     () => Promise<string | null>
+
+  openProject:
+    () => Promise<OpenProjectResult>
 
   createProject:
     (

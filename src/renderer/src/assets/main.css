@@ -1038,3 +1038,17 @@ button {
 .editor-confirm-actions button.danger:hover {
   background: #a83d3d;
 }
+
+.project-form-error {
+  margin-top: 12px;
+  padding: 10px 12px;
+
+  border: 1px solid #743c3c;
+  border-radius: 6px;
+
+  background: #2a1d1d;
+  color: #ff9d9d;
+
+  font-size: 12px;
+  line-height: 1.4;
+}
