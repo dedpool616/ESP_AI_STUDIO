@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useRef,
   useState
 } from 'react'
 
@@ -60,14 +61,22 @@ interface ProjectTreeNode {
   children?: ProjectTreeNode[]
 }
 
+interface OpenFile {
+  name: string
+  relativePath: string
+  content: string
+  savedContent: string
+}
+
 interface CodeEditorPageProps {
   projectName?: string
   projectPath?: string
+  isActive?: boolean
 }
 
 interface TreeNodeProps {
   node: ProjectTreeNode
-  activeFile?: string
+  activeFilePath?: string
   onOpenFile:
     (node: ProjectTreeNode) => void
 }
@@ -130,7 +139,7 @@ function getLanguage(
 
 function TreeNode({
   node,
-  activeFile,
+  activeFilePath,
   onOpenFile
 }: TreeNodeProps): React.JSX.Element {
   if (
@@ -157,8 +166,8 @@ function TreeNode({
                   child.relativePath
                 }
                 node={child}
-                activeFile={
-                  activeFile
+                activeFilePath={
+                  activeFilePath
                 }
                 onOpenFile={
                   onOpenFile
@@ -175,7 +184,7 @@ function TreeNode({
     <button
       type="button"
       className={`tree-file ${
-        activeFile ===
+        activeFilePath ===
         node.relativePath
           ? 'active'
           : ''
@@ -195,8 +204,15 @@ function TreeNode({
 
 function CodeEditorPage({
   projectName,
-  projectPath
+  projectPath,
+  isActive = true
 }: CodeEditorPageProps): React.JSX.Element {
+
+  const editorRef =
+    useRef<monaco.editor.IStandaloneCodeEditor | null>(
+      null
+    )
+
   const [tree, setTree] =
     useState<ProjectTreeNode[]>([])
 
@@ -206,23 +222,58 @@ function CodeEditorPage({
   const [treeError, setTreeError] =
     useState('')
 
-  const [activeFile, setActiveFile] =
-    useState<ProjectTreeNode | null>(null)
+  const [openFiles, setOpenFiles] =
+    useState<OpenFile[]>([])
 
-  const [content, setContent] =
-    useState('')
-
-  const [savedContent, setSavedContent] =
-    useState('')
-
-  const [dirty, setDirty] =
-    useState(false)
+  const [
+    activeFilePath,
+    setActiveFilePath
+  ] = useState<string | null>(null)
 
   const [fileLoading, setFileLoading] =
     useState(false)
 
   const [saving, setSaving] =
     useState(false)
+
+  const [
+  pendingClosePath,
+  setPendingClosePath
+] = useState<string | null>(null)
+
+  const activeFile =
+    openFiles.find(
+      (file) =>
+        file.relativePath ===
+        activeFilePath
+    ) ?? null
+
+  const dirty =
+    activeFile
+      ? activeFile.content !==
+        activeFile.savedContent
+      : false
+  useEffect(() => {
+    if (
+      !isActive ||
+      !activeFilePath
+    ) {
+      return
+    }
+
+    const timer =
+      window.setTimeout(() => {
+        editorRef.current?.layout()
+        editorRef.current?.focus()
+      }, 50)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [
+    isActive,
+    activeFilePath
+  ])
 
   useEffect(() => {
     let cancelled = false
@@ -231,10 +282,8 @@ function CodeEditorPage({
       async (): Promise<void> => {
         setTree([])
         setTreeError('')
-        setActiveFile(null)
-        setContent('')
-        setSavedContent('')
-        setDirty(false)
+        setOpenFiles([])
+        setActiveFilePath(null)
 
         if (!projectPath) {
           return
@@ -287,20 +336,19 @@ function CodeEditorPage({
         return
       }
 
-      if (
-        activeFile &&
-        activeFile.relativePath !==
-          node.relativePath &&
-        dirty
-      ) {
-        const shouldContinue =
-          window.confirm(
-            'В текущем файле есть несохранённые изменения.\n\nОткрыть другой файл и потерять эти изменения?'
-          )
+      const existingFile =
+        openFiles.find(
+          (file) =>
+            file.relativePath ===
+            node.relativePath
+        )
 
-        if (!shouldContinue) {
-          return
-        }
+      if (existingFile) {
+        setActiveFilePath(
+          existingFile.relativePath
+        )
+
+        return
       }
 
       setFileLoading(true)
@@ -323,14 +371,54 @@ function CodeEditorPage({
         const fileContent =
           result.content ?? ''
 
-        setActiveFile(node)
-        setContent(fileContent)
-        setSavedContent(fileContent)
-        setDirty(false)
+        const newFile: OpenFile = {
+          name: node.name,
+          relativePath:
+            node.relativePath,
+          content: fileContent,
+          savedContent: fileContent
+        }
+
+        setOpenFiles(
+          (currentFiles) => [
+            ...currentFiles,
+            newFile
+          ]
+        )
+
+        setActiveFilePath(
+          node.relativePath
+        )
       } finally {
         setFileLoading(false)
       }
     }
+
+  const handleEditorChange = (
+    value: string | undefined
+  ): void => {
+    if (!activeFilePath) {
+      return
+    }
+
+    const newValue =
+      value ?? ''
+
+    setOpenFiles(
+      (currentFiles) =>
+        currentFiles.map(
+          (file) =>
+            file.relativePath ===
+            activeFilePath
+              ? {
+                  ...file,
+                  content:
+                    newValue
+                }
+              : file
+        )
+    )
+  }
 
   const handleSave =
     useCallback(
@@ -338,8 +426,14 @@ function CodeEditorPage({
         if (
           !projectPath ||
           !activeFile ||
-          !dirty ||
           saving
+        ) {
+          return
+        }
+
+        if (
+          activeFile.content ===
+          activeFile.savedContent
         ) {
           return
         }
@@ -351,7 +445,7 @@ function CodeEditorPage({
             await window.api.saveProjectFile(
               projectPath,
               activeFile.relativePath,
-              content
+              activeFile.content
             )
 
           if (!result.success) {
@@ -362,8 +456,20 @@ function CodeEditorPage({
             return
           }
 
-          setSavedContent(content)
-          setDirty(false)
+          setOpenFiles(
+            (currentFiles) =>
+              currentFiles.map(
+                (file) =>
+                  file.relativePath ===
+                  activeFile.relativePath
+                    ? {
+                        ...file,
+                        savedContent:
+                          file.content
+                      }
+                    : file
+              )
+          )
         } finally {
           setSaving(false)
         }
@@ -371,11 +477,87 @@ function CodeEditorPage({
       [
         projectPath,
         activeFile,
-        dirty,
-        saving,
-        content
+        saving
       ]
     )
+
+  const closeFileImmediately = (
+  relativePath: string
+): void => {
+  const closingIndex =
+    openFiles.findIndex(
+      (file) =>
+        file.relativePath ===
+        relativePath
+    )
+
+  const nextFiles =
+    openFiles.filter(
+      (file) =>
+        file.relativePath !==
+        relativePath
+    )
+
+  setOpenFiles(nextFiles)
+
+  if (
+    activeFilePath ===
+    relativePath
+  ) {
+    if (nextFiles.length === 0) {
+      setActiveFilePath(null)
+
+      return
+    }
+
+    const newIndex =
+      Math.min(
+        closingIndex,
+        nextFiles.length - 1
+      )
+
+    setActiveFilePath(
+      nextFiles[newIndex]
+        .relativePath
+    )
+  }
+
+  window.setTimeout(() => {
+    editorRef.current?.layout()
+    editorRef.current?.focus()
+  }, 50)
+}
+
+const handleCloseFile = (
+  relativePath: string
+): void => {
+  const fileToClose =
+    openFiles.find(
+      (file) =>
+        file.relativePath ===
+        relativePath
+    )
+
+  if (!fileToClose) {
+    return
+  }
+
+  const isDirty =
+    fileToClose.content !==
+    fileToClose.savedContent
+
+  if (isDirty) {
+    setPendingClosePath(
+      relativePath
+    )
+
+    return
+  }
+
+  closeFileImmediately(
+    relativePath
+  )
+}
 
   useEffect(() => {
     const handleKeyDown = (
@@ -464,39 +646,86 @@ function CodeEditorPage({
 
             {!treeLoading &&
               !treeError &&
-              tree.map((node) => (
-                <TreeNode
-                  key={
-                    node.relativePath
-                  }
-                  node={node}
-                  activeFile={
-                    activeFile?.relativePath
-                  }
-                  onOpenFile={
-                    handleOpenFile
-                  }
-                />
-              ))}
+              tree.map(
+                (node) => (
+                  <TreeNode
+                    key={
+                      node.relativePath
+                    }
+                    node={node}
+                    activeFilePath={
+                      activeFilePath ??
+                      undefined
+                    }
+                    onOpenFile={
+                      handleOpenFile
+                    }
+                  />
+                )
+              )}
           </div>
         </aside>
 
         <div className="editor-area">
           <div className="editor-tabs">
-            {activeFile ? (
-              <div className="editor-tab active">
-                {activeFile.name}
-
-                {dirty && (
-                  <span className="dirty-dot">
-                    ●
-                  </span>
-                )}
-              </div>
-            ) : (
+            {openFiles.length === 0 && (
               <div className="editor-tab-placeholder">
                 No file open
               </div>
+            )}
+
+            {openFiles.map(
+              (file) => {
+                const isActive =
+                  file.relativePath ===
+                  activeFilePath
+
+                const isDirty =
+                  file.content !==
+                  file.savedContent
+
+                return (
+                  <div
+                    key={
+                      file.relativePath
+                    }
+                    className={`editor-tab ${
+                      isActive
+                        ? 'active'
+                        : ''
+                    }`}
+                    onClick={() =>
+                      setActiveFilePath(
+                        file.relativePath
+                      )
+                    }
+                  >
+                    <span>
+                      {file.name}
+                    </span>
+
+                    {isDirty && (
+                      <span className="dirty-dot">
+                        ●
+                      </span>
+                    )}
+
+                    <button
+                      type="button"
+                      className="editor-tab-close"
+                      onClick={(event) => {
+                        event.stopPropagation()
+
+                        handleCloseFile(
+                          file.relativePath
+                        )
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                )
+              }
             )}
           </div>
 
@@ -527,22 +756,26 @@ function CodeEditorPage({
                     activeFile.relativePath
                   }
                   height="100%"
+		  onMount={(editor) => {
+		    editorRef.current = editor
+		    
+		    if (isActive) {
+			window.setTimeout(() => {
+				editor.layout()
+				editor.focus()
+			}, 0)
+		    }
+		  }}
                   language={getLanguage(
                     activeFile.name
                   )}
-                  value={content}
+                  value={
+                    activeFile.content
+                  }
                   theme="vs-dark"
-                  onChange={(value) => {
-                    const newValue =
-                      value ?? ''
-
-                    setContent(newValue)
-
-                    setDirty(
-                      newValue !==
-                      savedContent
-                    )
-                  }}
+                  onChange={
+                    handleEditorChange
+                  }
                   options={{
                     automaticLayout: true,
                     minimap: {
@@ -561,24 +794,86 @@ function CodeEditorPage({
         </div>
       </div>
 
-      <div className="editor-bottom-panel">
-        <button type="button">
-          Problems
+     <div className="editor-bottom-panel">
+  <button type="button">
+    Problems
+  </button>
+
+  <button type="button">
+    Output
+  </button>
+
+  <button type="button">
+    Terminal
+  </button>
+
+  <button type="button">
+    Monitor
+  </button>
+</div>
+
+{pendingClosePath && (
+  <div className="editor-confirm-overlay">
+    <div className="editor-confirm-dialog">
+      <h3>
+        Несохранённые изменения
+      </h3>
+
+      <p>
+        Файл{' '}
+        <strong>
+          {
+            openFiles.find(
+              (file) =>
+                file.relativePath ===
+                pendingClosePath
+            )?.name
+          }
+        </strong>{' '}
+        содержит несохранённые изменения.
+      </p>
+
+      <p>
+        Закрыть вкладку и потерять изменения?
+      </p>
+
+      <div className="editor-confirm-actions">
+        <button
+          type="button"
+          onClick={() => {
+            setPendingClosePath(null)
+
+            window.setTimeout(() => {
+              editorRef.current?.layout()
+              editorRef.current?.focus()
+            }, 0)
+          }}
+        >
+          Отмена
         </button>
 
-        <button type="button">
-          Output
-        </button>
+        <button
+          type="button"
+          className="danger"
+          onClick={() => {
+            const path =
+              pendingClosePath
 
-        <button type="button">
-          Terminal
-        </button>
+            setPendingClosePath(null)
 
-        <button type="button">
-          Monitor
+            closeFileImmediately(
+              path
+            )
+          }}
+        >
+          Закрыть без сохранения
         </button>
       </div>
     </div>
+  </div>
+)}
+
+</div>
   )
 }
 

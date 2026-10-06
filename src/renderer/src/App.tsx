@@ -403,12 +403,21 @@ function App(): React.JSX.Element {
     </>
   )}
 
-  {activePage === 'Code Editor' && (
-    <CodeEditorPage
-      projectName={currentProject?.name}
-      projectPath={currentProject?.path}
-    />
-  )}
+<div
+  className={`code-editor-keep-alive ${
+    activePage === 'Code Editor'
+      ? 'active'
+      : ''
+  }`}
+>
+  <CodeEditorPage
+    projectName={currentProject?.name}
+    projectPath={currentProject?.path}
+    isActive={
+      activePage === 'Code Editor'
+    }
+  />
+</div>
 </section>
 
 <footer className="statusbar">
