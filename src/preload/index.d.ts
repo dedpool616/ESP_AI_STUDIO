@@ -1,6 +1,4 @@
-import {
-  ElectronAPI
-} from '@electron-toolkit/preload'
+import { ElectronAPI } from '@electron-toolkit/preload'
 import type { EditorSessions } from '../shared/editorSession'
 
 interface ProjectTreeNode {
@@ -15,10 +13,7 @@ interface CreateProjectOptions {
   location: string
   board: string
   idfVersion: string
-  gitMode:
-    | 'local'
-    | 'github'
-    | 'none'
+  gitMode: 'local' | 'github' | 'none'
 }
 
 interface CreateProjectResult {
@@ -32,9 +27,7 @@ interface OpenProjectInfo {
   path: string
   board: string
   idfVersion: string
-  gitMode:
-    | 'local'
-    | 'none'
+  gitMode: 'local' | 'none'
 }
 
 interface OpenProjectResult {
@@ -66,20 +59,14 @@ interface StoredProjectInfo {
   path: string
   board: string
   idfVersion: string
-  gitMode:
-    | 'local'
-    | 'github'
-    | 'none'
+  gitMode: 'local' | 'github' | 'none'
 }
 
 interface StoredAppState {
   editorSessions: EditorSessions
-  currentProject:
-    | StoredProjectInfo
-    | null
+  currentProject: StoredProjectInfo | null
 
-  recentProjects:
-    StoredProjectInfo[]
+  recentProjects: StoredProjectInfo[]
 }
 
 interface SaveAppStateResult {
@@ -91,42 +78,25 @@ interface ESPAIStudioAPI {
   inspectProject: (projectPath: string) => Promise<OpenProjectResult>
   onCloseRequested: (callback: () => void) => () => void
   confirmClose: () => void
-  selectFolder:
-    () => Promise<string | null>
+  selectFolder: () => Promise<string | null>
 
-    loadAppState:
-  () => Promise<StoredAppState>
+  loadAppState: () => Promise<StoredAppState>
 
-saveAppState:
-  (
-    state: StoredAppState
-  ) => Promise<SaveAppStateResult>
+  saveAppState: (state: StoredAppState) => Promise<SaveAppStateResult>
 
-  openProject:
-    () => Promise<OpenProjectResult>
+  openProject: () => Promise<OpenProjectResult>
 
-  createProject:
-    (
-      options: CreateProjectOptions
-    ) => Promise<CreateProjectResult>
+  createProject: (options: CreateProjectOptions) => Promise<CreateProjectResult>
 
-  getProjectTree:
-    (
-      projectPath: string
-    ) => Promise<ProjectTreeResult>
+  getProjectTree: (projectPath: string) => Promise<ProjectTreeResult>
 
-  readProjectFile:
-    (
-      projectPath: string,
-      relativePath: string
-    ) => Promise<ReadFileResult>
+  readProjectFile: (projectPath: string, relativePath: string) => Promise<ReadFileResult>
 
-  saveProjectFile:
-    (
-      projectPath: string,
-      relativePath: string,
-      content: string
-    ) => Promise<SaveFileResult>
+  saveProjectFile: (
+    projectPath: string,
+    relativePath: string,
+    content: string
+  ) => Promise<SaveFileResult>
 }
 
 declare global {

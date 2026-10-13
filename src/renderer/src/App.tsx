@@ -1,14 +1,14 @@
-import {
-  useEffect,
-  useCallback,
-  useLayoutEffect,
-  useRef,
-  useState
-} from 'react'
+import { useEffect, useCallback, useLayoutEffect, useRef, useState } from 'react'
 import CodeEditorPage from './pages/CodeEditorPage'
 import ProjectUnavailableDialog from './components/ProjectUnavailableDialog'
 import RecentProjectMenu from './components/RecentProjectMenu'
-import { emptyEditorSession, hasUnsavedChanges, parseEditorSessions, relocateEditorSession, type EditorSessions } from '../../shared/editorSession'
+import {
+  emptyEditorSession,
+  hasUnsavedChanges,
+  parseEditorSessions,
+  relocateEditorSession,
+  type EditorSessions
+} from '../../shared/editorSession'
 
 interface ProjectInfo {
   name: string
@@ -27,29 +27,23 @@ function App(): React.JSX.Element {
   const [board, setBoard] = useState('')
   const [idfVersion, setIdfVersion] = useState('recommended')
 
-  const [gitMode, setGitMode] =
-    useState<'local' | 'github' | 'none'>('local')
+  const [gitMode, setGitMode] = useState<'local' | 'github' | 'none'>('local')
 
   const [isCreating, setIsCreating] = useState(false)
 
-  const [
-  projectFormError,
-  setProjectFormError
-] = useState('')
+  const [projectFormError, setProjectFormError] = useState('')
 
-  const [currentProject, setCurrentProject] =
-    useState<ProjectInfo | null>(null)
+  const [currentProject, setCurrentProject] = useState<ProjectInfo | null>(null)
 
-  const [recentProjects, setRecentProjects] =
-    useState<ProjectInfo[]>([])
+  const [recentProjects, setRecentProjects] = useState<ProjectInfo[]>([])
   const [recentMenu, setRecentMenu] = useState<{
-    project: ProjectInfo; x: number; y: number; trigger: HTMLButtonElement
+    project: ProjectInfo
+    x: number
+    y: number
+    trigger: HTMLButtonElement
   } | null>(null)
 
-    const [
-  isAppStateLoaded,
-  setIsAppStateLoaded
-] = useState(false)
+  const [isAppStateLoaded, setIsAppStateLoaded] = useState(false)
 
   const [activePage, setActivePage] = useState('Home')
   const [editorSessions, setEditorSessions] = useState<EditorSessions>({})
@@ -59,7 +53,10 @@ function App(): React.JSX.Element {
   const [closing, setClosing] = useState(false)
   const [storageError, setStorageError] = useState('')
   const [projectError, setProjectError] = useState('')
-  const [unavailableProject, setUnavailableProject] = useState<{ project: ProjectInfo; error: string } | null>(null)
+  const [unavailableProject, setUnavailableProject] = useState<{
+    project: ProjectInfo
+    error: string
+  } | null>(null)
   const [projectBusy, setProjectBusy] = useState(false)
   const projectBusyRef = useRef(false)
   const [closeProjectRequested, setCloseProjectRequested] = useState(false)
@@ -71,8 +68,12 @@ function App(): React.JSX.Element {
   useEffect(() => window.api.onCloseRequested(() => setCloseRequested(true)), [])
 
   const activateProject = (project: ProjectInfo): void => {
-    if (editorSaving || (project.path !== currentProject?.path && currentProject &&
-        hasUnsavedChanges(editorSessions[currentProject.path] ?? emptyEditorSession))) {
+    if (
+      editorSaving ||
+      (project.path !== currentProject?.path &&
+        currentProject &&
+        hasUnsavedChanges(editorSessions[currentProject.path] ?? emptyEditorSession))
+    ) {
       setPendingProject(project)
       return
     }
@@ -104,13 +105,11 @@ function App(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
-  let cancelled = false
+    let cancelled = false
 
-  const restoreAppState =
-    async (): Promise<void> => {
+    const restoreAppState = async (): Promise<void> => {
       try {
-        const state =
-          await window.api.loadAppState()
+        const state = await window.api.loadAppState()
 
         if (cancelled) {
           return
@@ -118,27 +117,25 @@ function App(): React.JSX.Element {
 
         setEditorSessions(parseEditorSessions(state.editorSessions))
 
-        setRecentProjects(
-          state.recentProjects.slice(
-            0,
-            8
-          )
-        )
+        setRecentProjects(state.recentProjects.slice(0, 8))
         if (state.currentProject) {
           const result = await window.api.inspectProject(state.currentProject.path)
           if (cancelled) return
           if (result.success && result.project) {
             setCurrentProject(result.project)
           } else {
-            setUnavailableProject({ project: state.currentProject, error: result.error ?? 'Проект недоступен.' })
+            setUnavailableProject({
+              project: state.currentProject,
+              error: result.error ?? 'Проект недоступен.'
+            })
           }
         }
       } catch (error) {
-        if (!cancelled) setProjectError(error instanceof Error ? error.message : 'Не удалось восстановить проект.')
-        console.error(
-          'Unable to restore app state:',
-          error
-        )
+        if (!cancelled)
+          setProjectError(
+            error instanceof Error ? error.message : 'Не удалось восстановить проект.'
+          )
+        console.error('Unable to restore app state:', error)
       } finally {
         if (!cancelled) {
           setIsAppStateLoaded(true)
@@ -146,135 +143,98 @@ function App(): React.JSX.Element {
       }
     }
 
-  void restoreAppState()
+    void restoreAppState()
 
-  return () => {
-    cancelled = true
-  }
-}, [])
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
-useEffect(() => {
-  if (!isAppStateLoaded || closing) {
-    return
-  }
+  useEffect(() => {
+    if (!isAppStateLoaded || closing) {
+      return
+    }
 
-  const persistAppState =
-    async (): Promise<void> => {
+    const persistAppState = async (): Promise<void> => {
       try {
-        const result =
-          await window.api.saveAppState({
-            currentProject,
-            recentProjects,
-            editorSessions
-          })
+        const result = await window.api.saveAppState({
+          currentProject,
+          recentProjects,
+          editorSessions
+        })
 
         if (!result.success) {
           setStorageError(result.error ?? 'Не удалось сохранить состояние IDE.')
-          console.error(
-            'Unable to save app state:',
-            result.error
-          )
-        } else { setStorageError('') }
+          console.error('Unable to save app state:', result.error)
+        } else {
+          setStorageError('')
+        }
       } catch (error) {
-        setStorageError(error instanceof Error ? error.message : 'Не удалось сохранить состояние IDE.')
-        console.error(
-          'Unable to save app state:',
-          error
+        setStorageError(
+          error instanceof Error ? error.message : 'Не удалось сохранить состояние IDE.'
         )
+        console.error('Unable to save app state:', error)
       }
     }
 
-  const timer = window.setTimeout(() => { void persistAppState() }, 300)
-  return () => window.clearTimeout(timer)
-}, [
-  currentProject,
-  recentProjects,
-  editorSessions,
-  isAppStateLoaded,
-  closing
-])
+    const timer = window.setTimeout(() => {
+      void persistAppState()
+    }, 300)
+    return () => window.clearTimeout(timer)
+  }, [currentProject, recentProjects, editorSessions, isAppStateLoaded, closing])
 
-const navigation = [
-  'Home',
-  ...(currentProject
-    ? ['Dashboard']
-    : []),
-  'AI',
-  'Code Editor',
-  'AI + Code',
-  'Pin Manager',
-  'Monitor',
-  'Terminal',
-  'Git',
-  'Activity',
-  'User Guide',
-  'Settings'
-]
+  const navigation = [
+    'Home',
+    ...(currentProject ? ['Dashboard'] : []),
+    'AI',
+    'Code Editor',
+    'AI + Code',
+    'Pin Manager',
+    'Monitor',
+    'Terminal',
+    'Git',
+    'Activity',
+    'User Guide',
+    'Settings'
+  ]
 
-const handleOpenProject =
-  async (): Promise<void> => {
+  const handleOpenProject = async (): Promise<void> => {
     if (projectBusyRef.current) return
     projectBusyRef.current = true
     setProjectBusy(true)
     setProjectError('')
     try {
-    const result =
-      await window.api.openProject()
+      const result = await window.api.openProject()
 
-    if (result.canceled) {
-      return
-    }
-
-    if (
-      !result.success ||
-      !result.project
-    ) {
-      setProjectError(
-        `Не удалось открыть проект.\n\n${
-          result.error ??
-          'Unknown error'
-        }`
-      )
-
-      return
-    }
-
-    const openedProject:
-      ProjectInfo = {
-        name:
-          result.project.name,
-
-        path:
-          result.project.path,
-
-        board:
-          result.project.board,
-
-        idfVersion:
-          result.project.idfVersion,
-
-        gitMode:
-          result.project.gitMode
+      if (result.canceled) {
+        return
       }
 
-    activateProject(openedProject)
+      if (!result.success || !result.project) {
+        setProjectError(`Не удалось открыть проект.\n\n${result.error ?? 'Unknown error'}`)
 
-    setRecentProjects(
-      (projects) => {
-        const filtered =
-          projects.filter(
-            (project) =>
-              project.path !==
-              openedProject.path
-          )
-
-        return [
-          openedProject,
-          ...filtered
-        ].slice(0, 8)
+        return
       }
-    )
 
+      const openedProject: ProjectInfo = {
+        name: result.project.name,
+
+        path: result.project.path,
+
+        board: result.project.board,
+
+        idfVersion: result.project.idfVersion,
+
+        gitMode: result.project.gitMode
+      }
+
+      activateProject(openedProject)
+
+      setRecentProjects((projects) => {
+        const filtered = projects.filter((project) => project.path !== openedProject.path)
+
+        return [openedProject, ...filtered].slice(0, 8)
+      })
     } catch (error) {
       setProjectError(error instanceof Error ? error.message : 'Не удалось открыть проект.')
     } finally {
@@ -295,10 +255,15 @@ const handleOpenProject =
         return
       }
       const opened = result.project
-      setRecentProjects((projects) => [opened, ...projects.filter((item) => item.path !== opened.path)].slice(0, 8))
+      setRecentProjects((projects) =>
+        [opened, ...projects.filter((item) => item.path !== opened.path)].slice(0, 8)
+      )
       activateProject(opened)
     } catch (error) {
-      setUnavailableProject({ project, error: error instanceof Error ? error.message : 'Не удалось проверить проект.' })
+      setUnavailableProject({
+        project,
+        error: error instanceof Error ? error.message : 'Не удалось проверить проект.'
+      })
     } finally {
       projectBusyRef.current = false
       setProjectBusy(false)
@@ -314,19 +279,34 @@ const handleOpenProject =
       const folder = await window.api.selectFolder()
       if (!folder) return
       const result = await window.api.inspectProject(folder)
-      if (!result.success || !result.project) throw new Error(result.error ?? 'Выбранная папка не является ESP-IDF проектом.')
+      if (!result.success || !result.project)
+        throw new Error(result.error ?? 'Выбранная папка не является ESP-IDF проектом.')
       const relocated = result.project
       // The dialog blocks editing while the filesystem is checked.
-      const sessions = relocateEditorSession(snapshotRef.current.editorSessions, previous.path, relocated.path)
+      const sessions = relocateEditorSession(
+        snapshotRef.current.editorSessions,
+        previous.path,
+        relocated.path
+      )
       setEditorSessions(sessions)
-      setRecentProjects((projects) => [relocated, ...projects.filter((item) => item.path !== previous.path && item.path !== relocated.path)].slice(0, 8))
+      setRecentProjects((projects) =>
+        [
+          relocated,
+          ...projects.filter((item) => item.path !== previous.path && item.path !== relocated.path)
+        ].slice(0, 8)
+      )
       setUnavailableProject(null)
       if (currentProject?.path === previous.path) {
         setCurrentProject(relocated)
         setActivePage('Dashboard')
-      } else { activateProject(relocated) }
+      } else {
+        activateProject(relocated)
+      }
     } catch (error) {
-      setUnavailableProject({ project: previous, error: error instanceof Error ? error.message : 'Не удалось изменить расположение проекта.' })
+      setUnavailableProject({
+        project: previous,
+        error: error instanceof Error ? error.message : 'Не удалось изменить расположение проекта.'
+      })
     } finally {
       projectBusyRef.current = false
       setProjectBusy(false)
@@ -343,9 +323,10 @@ const handleOpenProject =
     if (!currentProject || editorSaving || projectBusy) return
     if (hasUnsavedChanges(editorSessions[currentProject.path] ?? emptyEditorSession)) {
       setCloseProjectRequested(true)
-    } else { closeProject() }
+    } else {
+      closeProject()
+    }
   }
-
 
   const handleBrowse = async (): Promise<void> => {
     const folder = await window.api.selectFolder()
@@ -363,34 +344,31 @@ const handleOpenProject =
     setGitMode('local')
   }
 
-  const handleCreateProject = 
-    async (): Promise<void> => {
-      if (isCreating) return
-      setProjectFormError('')
-      const normalizedName = projectName.trim()
-      
-      if (!normalizedName) {
-  setProjectFormError(
-    'Введите имя проекта.'
-  )
-  projectNameInputRef.current?.focus()
+  const handleCreateProject = async (): Promise<void> => {
+    if (isCreating) return
+    setProjectFormError('')
+    const normalizedName = projectName.trim()
 
-  return
-}
+    if (!normalizedName) {
+      setProjectFormError('Введите имя проекта.')
+      projectNameInputRef.current?.focus()
 
-      if (!/^[A-Za-z0-9_-]+$/.test(normalizedName)) {
-        setProjectFormError('Используйте только латинские буквы A–Z, a–z, цифры, дефис (-) и подчёркивание (_). Русские буквы и пробелы в имени проекта не поддерживаются.')
-        projectNameInputRef.current?.focus()
-        return
-      }
+      return
+    }
+
+    if (!/^[A-Za-z0-9_-]+$/.test(normalizedName)) {
+      setProjectFormError(
+        'Используйте только латинские буквы A–Z, a–z, цифры, дефис (-) и подчёркивание (_). Русские буквы и пробелы в имени проекта не поддерживаются.'
+      )
+      projectNameInputRef.current?.focus()
+      return
+    }
 
     if (!projectLocation) {
-  setProjectFormError(
-    'Выберите папку для проекта.'
-  )
+      setProjectFormError('Выберите папку для проекта.')
 
-  return
-}
+      return
+    }
 
     setIsCreating(true)
 
@@ -404,9 +382,7 @@ const handleOpenProject =
       })
 
       if (!result.success || !result.projectPath) {
-        setProjectFormError(
-          `Не удалось создать проект: ${result.error ?? 'Неизвестная ошибка.'}`
-        )
+        setProjectFormError(`Не удалось создать проект: ${result.error ?? 'Неизвестная ошибка.'}`)
         projectNameInputRef.current?.focus()
 
         return
@@ -423,9 +399,7 @@ const handleOpenProject =
       activateProject(newProject)
 
       setRecentProjects((projects) => {
-        const filteredProjects = projects.filter(
-          (project) => project.path !== newProject.path
-        )
+        const filteredProjects = projects.filter((project) => project.path !== newProject.path)
 
         return [newProject, ...filteredProjects].slice(0, 8)
       })
@@ -433,7 +407,9 @@ const handleOpenProject =
       setShowNewProject(false)
       resetNewProjectForm()
     } catch (error) {
-      setProjectFormError(`Не удалось создать проект: ${error instanceof Error ? error.message : 'Неизвестная ошибка.'}`)
+      setProjectFormError(
+        `Не удалось создать проект: ${error instanceof Error ? error.message : 'Неизвестная ошибка.'}`
+      )
       projectNameInputRef.current?.focus()
     } finally {
       setIsCreating(false)
@@ -456,9 +432,7 @@ const handleOpenProject =
     return boardNames[projectBoard] ?? projectBoard
   }
 
-  const formatGitMode = (
-    projectGitMode: 'local' | 'github' | 'none'
-  ): string => {
+  const formatGitMode = (projectGitMode: 'local' | 'github' | 'none'): string => {
     if (projectGitMode === 'local') {
       return 'Local Git'
     }
@@ -484,19 +458,19 @@ const handleOpenProject =
 
   return (
     <div className="app-shell">
-      {storageError && <div className="app-storage-error" role="alert">{storageError}</div>}
+      {storageError && (
+        <div className="app-storage-error" role="alert">
+          {storageError}
+        </div>
+      )}
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark">ESP</div>
 
           <div>
-            <div className="brand-title">
-              ESP AI Studio
-            </div>
+            <div className="brand-title">ESP AI Studio</div>
 
-            <div className="brand-version">
-              v0.1.0
-            </div>
+            <div className="brand-version">v0.1.0</div>
           </div>
         </div>
 
@@ -504,30 +478,30 @@ const handleOpenProject =
           {navigation.map((item) => (
             <button
               key={item}
-              className={`nav-item ${
-                item === activePage ? 'active' : ''
-              }`}
+              className={`nav-item ${item === activePage ? 'active' : ''}`}
               type="button"
-	      onClick={() => setActivePage(item)}
+              onClick={() => setActivePage(item)}
             >
               {item}
             </button>
           ))}
         </nav>
         {currentProject && (
-          <button type="button" className="nav-item" disabled={editorSaving || projectBusy || !isAppStateLoaded}
-            onClick={requestCloseProject}>Close Project</button>
+          <button
+            type="button"
+            className="nav-item"
+            disabled={editorSaving || projectBusy || !isAppStateLoaded}
+            onClick={requestCloseProject}
+          >
+            Close Project
+          </button>
         )}
       </aside>
 
       <main className="workspace">
         <header className="topbar">
           <div>
-            <h1>
-              {currentProject
-                ? currentProject.name
-                : 'ESP AI Studio'}
-            </h1>
+            <h1>{currentProject ? currentProject.name : 'ESP AI Studio'}</h1>
 
             <p>
               {currentProject
@@ -542,263 +516,228 @@ const handleOpenProject =
           </div>
         </header>
 
-<section
-  className={`home-content ${
-    activePage === 'Code Editor'
-      ? 'code-editor-host'
-      : ''
-  }`}
->
-  {projectError && <div className="project-form-error" role="alert">{projectError}</div>}
-
-  {activePage === 'Home' && (
-    <>
-          <div className="welcome">
-            <h2>Добро пожаловать</h2>
-
-            <p>
-              Создай новый ESP-IDF проект или открой существующий.
-              AI можно подключить на любом этапе работы.
-            </p>
-          </div>
-
-          <div className="project-actions">
-            <button
-              className="primary-action"
-              type="button"
-              disabled={!isAppStateLoaded || editorSaving || projectBusy}
-              onClick={() => setShowNewProject(true)}
-            >
-              <span className="action-symbol">+</span>
-
-              <span>
-                <strong>New Project</strong>
-                <small>Создать новый ESP-IDF проект</small>
-              </span>
-            </button>
-
-            <button
-              className="secondary-action"
-              type="button"
-              disabled={!isAppStateLoaded || editorSaving || projectBusy}
-              onClick={() => {
-                void handleOpenProject()
-              }}
-            >
-              <span className="action-symbol">↗</span>
-
-              <span>
-                <strong>Open Project</strong>
-                <small>Открыть существующий проект</small>
-              </span>
-            </button>
-          </div>
-
-
-      
-
-      <section className="recent-section">
-        <div className="section-heading">
-          <div>
-            <h3>Recent Projects</h3>
-
-            <p>
-              Недавно открытые проекты.
-            </p>
-          </div>
-        </div>
-
-        {recentProjects.length === 0 ? (
-          <div className="empty-projects">
-            <div className="empty-icon">
-              {'{ }'}
+        <section
+          className={`home-content ${activePage === 'Code Editor' ? 'code-editor-host' : ''}`}
+        >
+          {projectError && (
+            <div className="project-form-error" role="alert">
+              {projectError}
             </div>
+          )}
 
-            <h4>
-              Проектов пока нет
-            </h4>
+          {activePage === 'Home' && (
+            <>
+              <div className="welcome">
+                <h2>Добро пожаловать</h2>
 
-            <p>
-              Создай первый проект или открой уже существующий
-              ESP-IDF проект.
-            </p>
-          </div>
-        ) : (
-          <div className="recent-project-list">
-            {recentProjects.map((project) => (
-              <button
-                key={project.path}
-                type="button"
-                className="recent-project-card"
-                disabled={editorSaving || projectBusy || !isAppStateLoaded}
-                onContextMenu={(event) => {
-                  event.preventDefault()
-                  setRecentMenu({ project, x: event.clientX, y: event.clientY, trigger: event.currentTarget })
-                }}
-                onClick={() => {
-                  void handleRecentProject(project)
-                }}
-              >
-                <div>
-                  <strong>
-                    {project.name}
-                  </strong>
+                <p>
+                  Создай новый ESP-IDF проект или открой существующий. AI можно подключить на любом
+                  этапе работы.
+                </p>
+              </div>
+
+              <div className="project-actions">
+                <button
+                  className="primary-action"
+                  type="button"
+                  disabled={!isAppStateLoaded || editorSaving || projectBusy}
+                  onClick={() => setShowNewProject(true)}
+                >
+                  <span className="action-symbol">+</span>
 
                   <span>
-                    {project.path}
+                    <strong>New Project</strong>
+                    <small>Создать новый ESP-IDF проект</small>
                   </span>
+                </button>
+
+                <button
+                  className="secondary-action"
+                  type="button"
+                  disabled={!isAppStateLoaded || editorSaving || projectBusy}
+                  onClick={() => {
+                    void handleOpenProject()
+                  }}
+                >
+                  <span className="action-symbol">↗</span>
+
+                  <span>
+                    <strong>Open Project</strong>
+                    <small>Открыть существующий проект</small>
+                  </span>
+                </button>
+              </div>
+
+              <section className="recent-section">
+                <div className="section-heading">
+                  <div>
+                    <h3>Recent Projects</h3>
+
+                    <p>Недавно открытые проекты.</p>
+                  </div>
                 </div>
 
-                <small>
-                  {formatBoard(project.board)}
-                </small>
-              </button>
-            ))}
-          </div>
-        )}
-      </section>
-    </>
-  )}
+                {recentProjects.length === 0 ? (
+                  <div className="empty-projects">
+                    <div className="empty-icon">{'{ }'}</div>
 
-{activePage === 'Dashboard' &&
-  currentProject && (
-        <section className="project-dashboard">
-          <div className="dashboard-heading">
-            <div>
-              <h2>{currentProject.name}</h2>
+                    <h4>Проектов пока нет</h4>
 
-              <p>
-                Проект открыт и готов к работе.
-              </p>
-            </div>
-          </div>
+                    <p>Создай первый проект или открой уже существующий ESP-IDF проект.</p>
+                  </div>
+                ) : (
+                  <div className="recent-project-list">
+                    {recentProjects.map((project) => (
+                      <button
+                        key={project.path}
+                        type="button"
+                        className="recent-project-card"
+                        disabled={editorSaving || projectBusy || !isAppStateLoaded}
+                        onContextMenu={(event) => {
+                          event.preventDefault()
+                          setRecentMenu({
+                            project,
+                            x: event.clientX,
+                            y: event.clientY,
+                            trigger: event.currentTarget
+                          })
+                        }}
+                        onClick={() => {
+                          void handleRecentProject(project)
+                        }}
+                      >
+                        <div>
+                          <strong>{project.name}</strong>
 
-          <div className="project-info-grid">
-            <div className="info-card">
-              <span>Board</span>
+                          <span>{project.path}</span>
+                        </div>
 
-              <strong>
-                {formatBoard(currentProject.board)}
-              </strong>
-            </div>
+                        <small>{formatBoard(project.board)}</small>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </>
+          )}
 
-            <div className="info-card">
-              <span>ESP-IDF</span>
+          {activePage === 'Dashboard' && currentProject && (
+            <section className="project-dashboard">
+              <div className="dashboard-heading">
+                <div>
+                  <h2>{currentProject.name}</h2>
 
-              <strong>
-                {formatIdfVersion(currentProject.idfVersion)}
-              </strong>
-            </div>
+                  <p>Проект открыт и готов к работе.</p>
+                </div>
+              </div>
 
-            <div className="info-card">
-              <span>Git</span>
+              <div className="project-info-grid">
+                <div className="info-card">
+                  <span>Board</span>
 
-              <strong>
-                {formatGitMode(currentProject.gitMode)}
-              </strong>
-            </div>
+                  <strong>{formatBoard(currentProject.board)}</strong>
+                </div>
 
-            <div className="info-card">
-              <span>Build</span>
-              <strong>Not built</strong>
-            </div>
+                <div className="info-card">
+                  <span>ESP-IDF</span>
 
-            <div className="info-card">
-              <span>Port</span>
-              <strong>Not connected</strong>
-            </div>
+                  <strong>{formatIdfVersion(currentProject.idfVersion)}</strong>
+                </div>
 
-            <div className="info-card">
-              <span>AI</span>
-              <strong>Not connected</strong>
-            </div>
-          </div>
+                <div className="info-card">
+                  <span>Git</span>
 
-          <div className="dashboard-actions">
-            <button
-              type="button"
-              onClick={() => setActivePage('Code Editor')}
-            >
-              Code Editor
-            </button>
+                  <strong>{formatGitMode(currentProject.gitMode)}</strong>
+                </div>
 
-            <button type="button">
-              Build
-            </button>
+                <div className="info-card">
+                  <span>Build</span>
+                  <strong>Not built</strong>
+                </div>
 
-            <button
-              type="button"
-              onClick={() => setActivePage('AI')}
-            >
-              AI
-            </button>
+                <div className="info-card">
+                  <span>Port</span>
+                  <strong>Not connected</strong>
+                </div>
 
-            <button
-              type="button"
-              onClick={() => setActivePage('Monitor')}
-            >
-              Monitor
-            </button>
+                <div className="info-card">
+                  <span>AI</span>
+                  <strong>Not connected</strong>
+                </div>
+              </div>
+
+              <div className="dashboard-actions">
+                <button type="button" onClick={() => setActivePage('Code Editor')}>
+                  Code Editor
+                </button>
+
+                <button type="button">Build</button>
+
+                <button type="button" onClick={() => setActivePage('AI')}>
+                  AI
+                </button>
+
+                <button type="button" onClick={() => setActivePage('Monitor')}>
+                  Monitor
+                </button>
+              </div>
+            </section>
+          )}
+
+          <div className={`code-editor-keep-alive ${activePage === 'Code Editor' ? 'active' : ''}`}>
+            <CodeEditorPage
+              blocked={
+                closeRequested ||
+                closeProjectRequested ||
+                !!pendingProject ||
+                !!unavailableProject ||
+                projectBusy ||
+                showNewProject ||
+                !isAppStateLoaded
+              }
+              sessions={editorSessions}
+              setSessions={updateSessions}
+              onSavingChange={setEditorSaving}
+              projectName={currentProject?.name}
+              projectPath={currentProject?.path}
+              isActive={activePage === 'Code Editor'}
+            />
           </div>
         </section>
-      )}
 
-<div
-  className={`code-editor-keep-alive ${
-    activePage === 'Code Editor'
-      ? 'active'
-      : ''
-  }`}
->
-  <CodeEditorPage
-    blocked={closeRequested || closeProjectRequested || !!pendingProject || !!unavailableProject || projectBusy || showNewProject || !isAppStateLoaded}
-    sessions={editorSessions}
-    setSessions={updateSessions}
-    onSavingChange={setEditorSaving}
-    projectName={currentProject?.name}
-    projectPath={currentProject?.path}
-    isActive={
-      activePage === 'Code Editor'
-    }
-  />
-</div>
-</section>
+        <footer className="statusbar">
+          <span>ESP: {currentProject ? formatBoard(currentProject.board) : 'Not selected'}</span>
 
-<footer className="statusbar">
-          <span>
-            ESP:{' '}
-            {currentProject
-              ? formatBoard(currentProject.board)
-              : 'Not selected'}
-          </span>
-
-          <span>
-            Port: Not connected
-          </span>
+          <span>Port: Not connected</span>
 
           <span>
             ESP-IDF:{' '}
-            {currentProject
-              ? formatIdfVersion(
-                  currentProject.idfVersion
-                )
-              : 'Not configured'}
+            {currentProject ? formatIdfVersion(currentProject.idfVersion) : 'Not configured'}
           </span>
 
-          <span>
-            AI: Not connected
-          </span>
+          <span>AI: Not connected</span>
         </footer>
       </main>
 
-      {recentMenu && activePage === 'Home' && !unavailableProject && !closeRequested && !pendingProject && !showNewProject && (
-        <RecentProjectMenu x={recentMenu.x} y={recentMenu.y} trigger={recentMenu.trigger}
-          onClose={() => setRecentMenu(null)}
-          onRemove={() => {
-            setRecentProjects((projects) => projects.filter((project) => project.path !== recentMenu.project.path))
-            setRecentMenu(null)
-          }} />
-      )}
+      {recentMenu &&
+        activePage === 'Home' &&
+        !unavailableProject &&
+        !closeRequested &&
+        !pendingProject &&
+        !showNewProject && (
+          <RecentProjectMenu
+            x={recentMenu.x}
+            y={recentMenu.y}
+            trigger={recentMenu.trigger}
+            onClose={() => setRecentMenu(null)}
+            onRemove={() => {
+              setRecentProjects((projects) =>
+                projects.filter((project) => project.path !== recentMenu.project.path)
+              )
+              setRecentMenu(null)
+            }}
+          />
+        )}
       {unavailableProject && !closeRequested && (
         <ProjectUnavailableDialog
           name={unavailableProject.project.name}
@@ -806,7 +745,9 @@ const handleOpenProject =
           error={unavailableProject.error}
           busy={projectBusy}
           onCancel={() => setUnavailableProject(null)}
-          onLocate={() => { void relocateProject() }}
+          onLocate={() => {
+            void relocateProject()
+          }}
           onRemove={() => {
             const path = unavailableProject.project.path
             setRecentProjects((projects) => projects.filter((project) => project.path !== path))
@@ -817,7 +758,17 @@ const handleOpenProject =
       )}
       {(pendingProject || closeRequested || closeProjectRequested) && (
         <div className="editor-confirm-overlay">
-          <div className="editor-confirm-dialog" role="dialog" aria-modal="true" aria-label={closeRequested ? 'Закрытие программы' : closeProjectRequested ? 'Закрытие проекта' : 'Переключение проекта'}
+          <div
+            className="editor-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label={
+              closeRequested
+                ? 'Закрытие программы'
+                : closeProjectRequested
+                  ? 'Закрытие проекта'
+                  : 'Переключение проекта'
+            }
             onKeyDown={(event) => {
               if (event.key === 'Escape' && !closing) {
                 event.preventDefault()
@@ -826,39 +777,80 @@ const handleOpenProject =
                 setCloseProjectRequested(false)
               }
               if (event.key === 'Tab') {
-                const buttons = event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')
-                const first = buttons[0], last = buttons[buttons.length - 1]
-                if (!first) { event.preventDefault(); return }
+                const buttons =
+                  event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')
+                const first = buttons[0],
+                  last = buttons[buttons.length - 1]
+                if (!first) {
+                  event.preventDefault()
+                  return
+                }
                 if (event.shiftKey && document.activeElement === first) {
-                  event.preventDefault(); last.focus()
+                  event.preventDefault()
+                  last.focus()
                 } else if (!event.shiftKey && document.activeElement === last) {
-                  event.preventDefault(); first.focus()
+                  event.preventDefault()
+                  first.focus()
                 }
               }
-            }}>
-            <h3>{closeRequested ? 'Закрыть ESP AI Studio?' : closeProjectRequested ? 'Закрыть проект?' : 'Переключить проект?'}</h3>
-            <p>{Object.values(editorSessions).some(hasUnsavedChanges)
-              ? 'Есть несохранённые изменения. Они останутся в сессиях редактора; исходные файлы на диске не изменятся.'
-              : 'Вкладки и активные файлы будут сохранены для следующего запуска.'}</p>
+            }}
+          >
+            <h3>
+              {closeRequested
+                ? 'Закрыть ESP AI Studio?'
+                : closeProjectRequested
+                  ? 'Закрыть проект?'
+                  : 'Переключить проект?'}
+            </h3>
+            <p>
+              {Object.values(editorSessions).some(hasUnsavedChanges)
+                ? 'Есть несохранённые изменения. Они останутся в сессиях редактора; исходные файлы на диске не изменятся.'
+                : 'Вкладки и активные файлы будут сохранены для следующего запуска.'}
+            </p>
             {editorSaving && <p>Дождитесь завершения сохранения файла.</p>}
             {(projectBusy || isCreating) && <p>Дождитесь завершения операции с проектом.</p>}
             {!isAppStateLoaded && <p>Дождитесь загрузки состояния IDE.</p>}
             {storageError && <p role="alert">{storageError}</p>}
             <div className="editor-confirm-actions">
-              <button type="button" autoFocus disabled={closing} onClick={() => {
-                setPendingProject(null)
-                setCloseRequested(false)
-                setCloseProjectRequested(false)
-              }}>Отмена</button>
-              <button type="button" disabled={closing || editorSaving || projectBusy || isCreating || !isAppStateLoaded} onClick={() => {
-                if (closeRequested) { void finishClose(); return }
-                if (closeProjectRequested) { closeProject(); return }
-                if (pendingProject) {
-                  setCurrentProject(pendingProject)
-                  setActivePage('Dashboard')
+              <button
+                type="button"
+                autoFocus
+                disabled={closing}
+                onClick={() => {
                   setPendingProject(null)
-                }
-              }}>{closing ? 'Сохранение сессий…' : closeRequested ? 'Сохранить сессии и выйти' : closeProjectRequested ? 'Закрыть, сохранив сессию' : 'Переключить, сохранив правки'}</button>
+                  setCloseRequested(false)
+                  setCloseProjectRequested(false)
+                }}
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                disabled={closing || editorSaving || projectBusy || isCreating || !isAppStateLoaded}
+                onClick={() => {
+                  if (closeRequested) {
+                    void finishClose()
+                    return
+                  }
+                  if (closeProjectRequested) {
+                    closeProject()
+                    return
+                  }
+                  if (pendingProject) {
+                    setCurrentProject(pendingProject)
+                    setActivePage('Dashboard')
+                    setPendingProject(null)
+                  }
+                }}
+              >
+                {closing
+                  ? 'Сохранение сессий…'
+                  : closeRequested
+                    ? 'Сохранить сессии и выйти'
+                    : closeProjectRequested
+                      ? 'Закрыть, сохранив сессию'
+                      : 'Переключить, сохранив правки'}
+              </button>
             </div>
           </div>
         </div>
@@ -870,17 +862,13 @@ const handleOpenProject =
               <div>
                 <h2>New Project</h2>
 
-                <p>
-                  Создание нового ESP-IDF проекта
-                </p>
+                <p>Создание нового ESP-IDF проекта</p>
               </div>
 
               <button
                 className="close-button"
                 type="button"
-                onClick={() =>
-                  setShowNewProject(false)
-                }
+                onClick={() => setShowNewProject(false)}
               >
                 ×
               </button>
@@ -918,11 +906,7 @@ const handleOpenProject =
                     readOnly
                   />
 
-                  <button
-                    type="button"
-                    className="browse-button"
-                    onClick={handleBrowse}
-                  >
+                  <button type="button" className="browse-button" onClick={handleBrowse}>
                     Browse
                   </button>
                 </div>
@@ -931,69 +915,33 @@ const handleOpenProject =
               <label className="form-field">
                 <span>Board</span>
 
-                <select
-                  value={board}
-                  onChange={(event) =>
-                    setBoard(
-                      event.target.value
-                    )
-                  }
-                >
-                  <option value="">
-                    Not selected
-                  </option>
+                <select value={board} onChange={(event) => setBoard(event.target.value)}>
+                  <option value="">Not selected</option>
 
-                  <option value="esp32">
-                    ESP32
-                  </option>
+                  <option value="esp32">ESP32</option>
 
-                  <option value="esp32s2">
-                    ESP32-S2
-                  </option>
+                  <option value="esp32s2">ESP32-S2</option>
 
-                  <option value="esp32s3">
-                    ESP32-S3
-                  </option>
+                  <option value="esp32s3">ESP32-S3</option>
 
-                  <option value="esp32c3">
-                    ESP32-C3
-                  </option>
+                  <option value="esp32c3">ESP32-C3</option>
 
-                  <option value="esp32c6">
-                    ESP32-C6
-                  </option>
+                  <option value="esp32c6">ESP32-C6</option>
                 </select>
 
-                <small>
-                  Можно выбрать позже.
-                </small>
+                <small>Можно выбрать позже.</small>
               </label>
 
               <label className="form-field">
-                <span>
-                  ESP-IDF version
-                </span>
+                <span>ESP-IDF version</span>
 
-                <select
-                  value={idfVersion}
-                  onChange={(event) =>
-                    setIdfVersion(
-                      event.target.value
-                    )
-                  }
-                >
-                  <option value="recommended">
-                    Recommended
-                  </option>
+                <select value={idfVersion} onChange={(event) => setIdfVersion(event.target.value)}>
+                  <option value="recommended">Recommended</option>
 
-                  <option value="later">
-                    Select later
-                  </option>
+                  <option value="later">Select later</option>
                 </select>
 
-                <small>
-                  Конкретную версию можно изменить позже.
-                </small>
+                <small>Конкретную версию можно изменить позже.</small>
               </label>
 
               <label className="form-field">
@@ -1002,29 +950,16 @@ const handleOpenProject =
                 <select
                   value={gitMode}
                   onChange={(event) =>
-                    setGitMode(
-                      event.target.value as
-                        | 'local'
-                        | 'github'
-                        | 'none'
-                    )
+                    setGitMode(event.target.value as 'local' | 'github' | 'none')
                   }
                 >
-                  <option value="local">
-                    Local Git
+                  <option value="local">Local Git</option>
+
+                  <option value="github" disabled>
+                    Git + GitHub (подключим позже)
                   </option>
 
-                  <option
-                    value="github"
-                    disabled
-                  >
-                    Git + GitHub
-                    (подключим позже)
-                  </option>
-
-                  <option value="none">
-                    No Git
-                  </option>
+                  <option value="none">No Git</option>
                 </select>
               </label>
             </div>
@@ -1040,9 +975,7 @@ const handleOpenProject =
                 className="cancel-button"
                 type="button"
                 disabled={isCreating}
-                onClick={() =>
-                  setShowNewProject(false)
-                }
+                onClick={() => setShowNewProject(false)}
               >
                 Cancel
               </button>
@@ -1053,9 +986,7 @@ const handleOpenProject =
                 disabled={isCreating}
                 onClick={handleCreateProject}
               >
-                {isCreating
-                  ? 'Creating...'
-                  : 'Create Project'}
+                {isCreating ? 'Creating...' : 'Create Project'}
               </button>
             </div>
           </div>

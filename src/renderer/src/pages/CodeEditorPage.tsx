@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState
-} from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import {
   emptyEditorSession,
@@ -13,9 +7,7 @@ import {
   type OpenFile
 } from '../../../shared/editorSession'
 
-import Editor, {
-  loader
-} from '@monaco-editor/react'
+import Editor, { loader } from '@monaco-editor/react'
 
 import * as monaco from 'monaco-editor'
 
@@ -31,26 +23,15 @@ self.MonacoEnvironment = {
       return new jsonWorker()
     }
 
-    if (
-      label === 'css' ||
-      label === 'scss' ||
-      label === 'less'
-    ) {
+    if (label === 'css' || label === 'scss' || label === 'less') {
       return new cssWorker()
     }
 
-    if (
-      label === 'html' ||
-      label === 'handlebars' ||
-      label === 'razor'
-    ) {
+    if (label === 'html' || label === 'handlebars' || label === 'razor') {
       return new htmlWorker()
     }
 
-    if (
-      label === 'typescript' ||
-      label === 'javascript'
-    ) {
+    if (label === 'typescript' || label === 'javascript') {
       return new tsWorker()
     }
 
@@ -82,15 +63,11 @@ interface CodeEditorPageProps {
 interface TreeNodeProps {
   node: ProjectTreeNode
   activeFilePath?: string
-  onOpenFile:
-    (node: ProjectTreeNode) => void
+  onOpenFile: (node: ProjectTreeNode) => void
 }
 
-function getLanguage(
-  fileName: string
-): string {
-  const lower =
-    fileName.toLowerCase()
+function getLanguage(fileName: string): string {
+  const lower = fileName.toLowerCase()
 
   if (
     lower.endsWith('.c') ||
@@ -101,85 +78,52 @@ function getLanguage(
     return 'cpp'
   }
 
-  if (
-    lower.endsWith('.json')
-  ) {
+  if (lower.endsWith('.json')) {
     return 'json'
   }
 
-  if (
-    lower.endsWith('.ts') ||
-    lower.endsWith('.tsx')
-  ) {
+  if (lower.endsWith('.ts') || lower.endsWith('.tsx')) {
     return 'typescript'
   }
 
-  if (
-    lower.endsWith('.js') ||
-    lower.endsWith('.jsx')
-  ) {
+  if (lower.endsWith('.js') || lower.endsWith('.jsx')) {
     return 'javascript'
   }
 
-  if (
-    lower.endsWith('.css')
-  ) {
+  if (lower.endsWith('.css')) {
     return 'css'
   }
 
-  if (
-    lower.endsWith('.html')
-  ) {
+  if (lower.endsWith('.html')) {
     return 'html'
   }
 
-  if (
-    lower.endsWith('.md')
-  ) {
+  if (lower.endsWith('.md')) {
     return 'markdown'
   }
 
   return 'plaintext'
 }
 
-function TreeNode({
-  node,
-  activeFilePath,
-  onOpenFile
-}: TreeNodeProps): React.JSX.Element {
-  if (
-    node.type === 'directory'
-  ) {
+function TreeNode({ node, activeFilePath, onOpenFile }: TreeNodeProps): React.JSX.Element {
+  if (node.type === 'directory') {
     return (
-      <details
-        className="tree-directory"
-        open
-      >
+      <details className="tree-directory" open>
         <summary>
-          <span className="tree-icon">
-            ▾
-          </span>
+          <span className="tree-icon">▾</span>
 
           {node.name}
         </summary>
 
         <div className="tree-children">
-          {node.children?.map(
-            (child) => (
-              <TreeNode
-                key={
-                  child.relativePath
-                }
-                node={child}
-                activeFilePath={
-                  activeFilePath
-                }
-                onOpenFile={
-                  onOpenFile
-                }
-              />
-            )
-          )}
+          {node.children?.map((child) => (
+            <TreeNode
+              key={child.relativePath}
+              node={child}
+              activeFilePath={activeFilePath}
+              onOpenFile={onOpenFile}
+            />
+          ))}
         </div>
       </details>
     )
@@ -188,19 +132,10 @@ function TreeNode({
   return (
     <button
       type="button"
-      className={`tree-file ${
-        activeFilePath ===
-        node.relativePath
-          ? 'active'
-          : ''
-      }`}
-      onClick={() =>
-        onOpenFile(node)
-      }
+      className={`tree-file ${activeFilePath === node.relativePath ? 'active' : ''}`}
+      onClick={() => onOpenFile(node)}
     >
-      <span className="tree-file-icon">
-        ◦
-      </span>
+      <span className="tree-file-icon">◦</span>
 
       {node.name}
     </button>
@@ -216,38 +151,38 @@ function CodeEditorPage({
   onSavingChange,
   blocked
 }: CodeEditorPageProps): React.JSX.Element {
+  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
 
-  const editorRef =
-    useRef<monaco.editor.IStandaloneCodeEditor | null>(
-      null
-    )
+  const [tree, setTree] = useState<ProjectTreeNode[]>([])
 
-  const [tree, setTree] =
-    useState<ProjectTreeNode[]>([])
+  const [treeLoading, setTreeLoading] = useState(false)
 
-  const [treeLoading, setTreeLoading] =
-    useState(false)
+  const [treeError, setTreeError] = useState('')
 
-  const [treeError, setTreeError] =
-    useState('')
-
-  const session = projectPath ? sessions[projectPath] ?? emptyEditorSession : emptyEditorSession
+  const session = projectPath ? (sessions[projectPath] ?? emptyEditorSession) : emptyEditorSession
   const { openFiles, activeFilePath } = session
   const setOpenFiles = (update: SetStateAction<OpenFile[]>): void => {
     if (!projectPath) return
     setSessions((current) => {
       const previous = current[projectPath] ?? emptyEditorSession
-      return { ...current, [projectPath]: {
-        ...previous,
-        openFiles: typeof update === 'function' ? update(previous.openFiles) : update
-      } }
+      return {
+        ...current,
+        [projectPath]: {
+          ...previous,
+          openFiles: typeof update === 'function' ? update(previous.openFiles) : update
+        }
+      }
     })
   }
   const setActiveFilePath = (path: string | null): void => {
     if (!projectPath) return
-    setSessions((current) => ({ ...current, [projectPath]: {
-      ...(current[projectPath] ?? emptyEditorSession), activeFilePath: path
-    } }))
+    setSessions((current) => ({
+      ...current,
+      [projectPath]: {
+        ...(current[projectPath] ?? emptyEditorSession),
+        activeFilePath: path
+      }
+    }))
   }
   const generation = useRef(0)
   const pendingReads = useRef(new Set<string>())
@@ -257,100 +192,75 @@ function CodeEditorPage({
   useLayoutEffect(() => {
     generation.current += 1
     pendingReads.current.clear()
-    return () => { generation.current += 1 }
+    return () => {
+      generation.current += 1
+    }
   }, [projectPath])
 
-  const [fileLoading, setFileLoading] =
-    useState(false)
+  const [fileLoading, setFileLoading] = useState(false)
 
-  const [saving, setSaving] =
-    useState(false)
+  const [saving, setSaving] = useState(false)
 
-  const [
-  pendingClosePath,
-  setPendingClosePath
-] = useState<string | null>(null)
+  const [pendingClosePath, setPendingClosePath] = useState<string | null>(null)
 
-  const activeFile =
-    openFiles.find(
-      (file) =>
-        file.relativePath ===
-        activeFilePath
-    ) ?? null
+  const activeFile = openFiles.find((file) => file.relativePath === activeFilePath) ?? null
 
-  const dirty =
-    activeFile
-      ? activeFile.content !==
-        activeFile.savedContent
-      : false
+  const dirty = activeFile ? activeFile.content !== activeFile.savedContent : false
   useEffect(() => {
-    if (
-      !isActive ||
-      !activeFilePath
-    ) {
+    if (!isActive || !activeFilePath) {
       return
     }
 
-    const timer =
-      window.setTimeout(() => {
-        editorRef.current?.layout()
-        editorRef.current?.focus()
-      }, 50)
+    const timer = window.setTimeout(() => {
+      editorRef.current?.layout()
+      editorRef.current?.focus()
+    }, 50)
 
     return () => {
       window.clearTimeout(timer)
     }
-  }, [
-    isActive,
-    activeFilePath
-  ])
+  }, [isActive, activeFilePath])
 
   useEffect(() => {
     let cancelled = false
 
-    const loadTree =
-      async (): Promise<void> => {
-        setFileLoading(false)
-        setPendingClosePath(null)
-        setOperationError('')
-        setTree([])
-        setTreeError('')
-        setTreeLoading(false)
+    const loadTree = async (): Promise<void> => {
+      setFileLoading(false)
+      setPendingClosePath(null)
+      setOperationError('')
+      setTree([])
+      setTreeError('')
+      setTreeLoading(false)
 
-        if (!projectPath) {
+      if (!projectPath) {
+        return
+      }
+
+      setTreeLoading(true)
+
+      try {
+        const result = await window.api.getProjectTree(projectPath)
+
+        if (cancelled) {
           return
         }
 
-        setTreeLoading(true)
+        if (!result.success) {
+          setTreeError(result.error ?? 'Unable to load project.')
 
-        try {
-          const result =
-            await window.api.getProjectTree(
-              projectPath
-            )
+          return
+        }
 
-          if (cancelled) {
-            return
-          }
-
-          if (!result.success) {
-            setTreeError(
-              result.error ??
-              'Unable to load project.'
-            )
-
-            return
-          }
-
-          setTree(result.tree)
-        } catch (error) {
-          if (!cancelled) setTreeError(error instanceof Error ? error.message : 'Unable to load project.')
-        } finally {
-          if (!cancelled) {
-            setTreeLoading(false)
-          }
+        setTree(result.tree)
+      } catch (error) {
+        if (!cancelled)
+          setTreeError(error instanceof Error ? error.message : 'Unable to load project.')
+      } finally {
+        if (!cancelled) {
+          setTreeLoading(false)
         }
       }
+    }
 
     void loadTree()
 
@@ -359,260 +269,199 @@ function CodeEditorPage({
     }
   }, [projectPath])
 
-  const handleOpenFile =
-    async (
-      node: ProjectTreeNode
-    ): Promise<void> => {
-      if (
-        !projectPath || blocked ||
-        node.type !== 'file'
-      ) {
-        return
-      }
-
-      const existingFile =
-        openFiles.find(
-          (file) =>
-            file.relativePath ===
-            node.relativePath
-        )
-
-      if (existingFile) {
-        setActiveFilePath(
-          existingFile.relativePath
-        )
-
-        return
-      }
-
-      const requestGeneration = generation.current
-      if (pendingReads.current.has(node.relativePath)) return
-      pendingReads.current.add(node.relativePath)
-      setOperationError('')
-      setFileLoading(true)
-
-      try {
-        const result =
-          await window.api.readProjectFile(
-            projectPath,
-            node.relativePath
-          )
-
-        if (requestGeneration !== generation.current) return
-        if (!result.success) {
-          setOperationError(
-            `Не удалось открыть файл.\n\n${result.error ?? 'Unknown error'}`
-          )
-
-          return
-        }
-
-        const fileContent =
-          result.content ?? ''
-
-        const newFile: OpenFile = {
-          name: node.name,
-          relativePath:
-            node.relativePath,
-          content: fileContent,
-          savedContent: fileContent
-        }
-
-        setOpenFiles(
-          (currentFiles) => currentFiles.some((file) => file.relativePath === node.relativePath) ? currentFiles : [
-            ...currentFiles,
-            newFile
-          ]
-        )
-
-        setActiveFilePath(
-          node.relativePath
-        )
-      } catch (error) {
-        if (requestGeneration === generation.current) {
-          setOperationError(error instanceof Error ? error.message : 'Не удалось открыть файл.')
-        }
-      } finally {
-        if (requestGeneration === generation.current) {
-          pendingReads.current.delete(node.relativePath)
-          setFileLoading(pendingReads.current.size > 0)
-        }
-      }
+  const handleOpenFile = async (node: ProjectTreeNode): Promise<void> => {
+    if (!projectPath || blocked || node.type !== 'file') {
+      return
     }
 
-  const handleEditorChange = (
-    value: string | undefined
-  ): void => {
+    const existingFile = openFiles.find((file) => file.relativePath === node.relativePath)
+
+    if (existingFile) {
+      setActiveFilePath(existingFile.relativePath)
+
+      return
+    }
+
+    const requestGeneration = generation.current
+    if (pendingReads.current.has(node.relativePath)) return
+    pendingReads.current.add(node.relativePath)
+    setOperationError('')
+    setFileLoading(true)
+
+    try {
+      const result = await window.api.readProjectFile(projectPath, node.relativePath)
+
+      if (requestGeneration !== generation.current) return
+      if (!result.success) {
+        setOperationError(`Не удалось открыть файл.\n\n${result.error ?? 'Unknown error'}`)
+
+        return
+      }
+
+      const fileContent = result.content ?? ''
+
+      const newFile: OpenFile = {
+        name: node.name,
+        relativePath: node.relativePath,
+        content: fileContent,
+        savedContent: fileContent
+      }
+
+      setOpenFiles((currentFiles) =>
+        currentFiles.some((file) => file.relativePath === node.relativePath)
+          ? currentFiles
+          : [...currentFiles, newFile]
+      )
+
+      setActiveFilePath(node.relativePath)
+    } catch (error) {
+      if (requestGeneration === generation.current) {
+        setOperationError(error instanceof Error ? error.message : 'Не удалось открыть файл.')
+      }
+    } finally {
+      if (requestGeneration === generation.current) {
+        pendingReads.current.delete(node.relativePath)
+        setFileLoading(pendingReads.current.size > 0)
+      }
+    }
+  }
+
+  const handleEditorChange = (value: string | undefined): void => {
     if (!activeFilePath || blocked) {
       return
     }
 
-    const newValue =
-      value ?? ''
+    const newValue = value ?? ''
 
-    setOpenFiles(
-      (currentFiles) =>
-        currentFiles.map(
-          (file) =>
-            file.relativePath ===
-            activeFilePath
-              ? {
-                  ...file,
-                  content:
-                    newValue
-                }
-              : file
-        )
+    setOpenFiles((currentFiles) =>
+      currentFiles.map((file) =>
+        file.relativePath === activeFilePath
+          ? {
+              ...file,
+              content: newValue
+            }
+          : file
+      )
     )
   }
 
-  const saveFiles =
-    useCallback(
-      async (files: OpenFile[]): Promise<void> => {
-        if (
-          !projectPath ||
-          savingRef.current || blocked
-        ) {
-          return
-        }
+  const saveFiles = useCallback(
+    async (files: OpenFile[]): Promise<void> => {
+      if (!projectPath || savingRef.current || blocked) {
+        return
+      }
 
-        const snapshots = files.filter((file) => file.content !== file.savedContent)
-          .map((file) => ({ relativePath: file.relativePath, content: file.content }))
-        if (snapshots.length === 0) return
-        const savedProject = projectPath
-        const requestGeneration = generation.current
-        savingRef.current = true
-        setSaving(true)
-        onSavingChange(true)
-        setOperationError('')
-        const errors: string[] = []
+      const snapshots = files
+        .filter((file) => file.content !== file.savedContent)
+        .map((file) => ({ relativePath: file.relativePath, content: file.content }))
+      if (snapshots.length === 0) return
+      const savedProject = projectPath
+      const requestGeneration = generation.current
+      savingRef.current = true
+      setSaving(true)
+      onSavingChange(true)
+      setOperationError('')
+      const errors: string[] = []
 
-        try {
-          for (const snapshot of snapshots) {
-            try {
-              const result = await window.api.saveProjectFile(
-                savedProject, snapshot.relativePath, snapshot.content
+      try {
+        for (const snapshot of snapshots) {
+          try {
+            const result = await window.api.saveProjectFile(
+              savedProject,
+              snapshot.relativePath,
+              snapshot.content
+            )
+            if (!result.success) {
+              errors.push(
+                `${snapshot.relativePath}: ${result.error ?? 'Не удалось сохранить файл.'}`
               )
-              if (!result.success) {
-                errors.push(`${snapshot.relativePath}: ${result.error ?? 'Не удалось сохранить файл.'}`)
-                continue
-              }
-              setSessions((current) => ({ ...current, [savedProject]: markFileSaved(
-                current[savedProject] ?? emptyEditorSession, snapshot.relativePath, snapshot.content
-              ) }))
-            } catch (error) {
-              errors.push(`${snapshot.relativePath}: ${error instanceof Error ? error.message : 'Не удалось сохранить файл.'}`)
+              continue
             }
+            setSessions((current) => ({
+              ...current,
+              [savedProject]: markFileSaved(
+                current[savedProject] ?? emptyEditorSession,
+                snapshot.relativePath,
+                snapshot.content
+              )
+            }))
+          } catch (error) {
+            errors.push(
+              `${snapshot.relativePath}: ${error instanceof Error ? error.message : 'Не удалось сохранить файл.'}`
+            )
           }
-          if (errors.length > 0 && requestGeneration === generation.current) {
-            setOperationError(`Не удалось сохранить: ${errors.join('; ')}`)
-          }
-        } finally {
-          savingRef.current = false
-          setSaving(false)
-          onSavingChange(false)
         }
-      },
-      [
-        projectPath,
-        setSessions,
-        onSavingChange,
-        blocked
-      ]
-    )
+        if (errors.length > 0 && requestGeneration === generation.current) {
+          setOperationError(`Не удалось сохранить: ${errors.join('; ')}`)
+        }
+      } finally {
+        savingRef.current = false
+        setSaving(false)
+        onSavingChange(false)
+      }
+    },
+    [projectPath, setSessions, onSavingChange, blocked]
+  )
 
   const handleSave = useCallback(async (): Promise<void> => {
     if (activeFile) await saveFiles([activeFile])
   }, [activeFile, saveFiles])
 
-  const handleSaveAll = (): void => { void saveFiles(openFiles) }
+  const handleSaveAll = (): void => {
+    void saveFiles(openFiles)
+  }
   const hasDirtyFiles = openFiles.some((file) => file.content !== file.savedContent)
 
-  const closeFileImmediately = (
-  relativePath: string
-): void => {
-  const closingIndex =
-    openFiles.findIndex(
-      (file) =>
-        file.relativePath ===
-        relativePath
-    )
+  const closeFileImmediately = (relativePath: string): void => {
+    const closingIndex = openFiles.findIndex((file) => file.relativePath === relativePath)
 
-  const nextFiles =
-    openFiles.filter(
-      (file) =>
-        file.relativePath !==
-        relativePath
-    )
+    const nextFiles = openFiles.filter((file) => file.relativePath !== relativePath)
 
-  setOpenFiles(nextFiles)
+    setOpenFiles(nextFiles)
 
-  if (
-    activeFilePath ===
-    relativePath
-  ) {
-    if (nextFiles.length === 0) {
-      setActiveFilePath(null)
+    if (activeFilePath === relativePath) {
+      if (nextFiles.length === 0) {
+        setActiveFilePath(null)
+
+        return
+      }
+
+      const newIndex = Math.min(closingIndex, nextFiles.length - 1)
+
+      setActiveFilePath(nextFiles[newIndex].relativePath)
+    }
+
+    window.setTimeout(() => {
+      editorRef.current?.layout()
+      editorRef.current?.focus()
+    }, 50)
+  }
+
+  const handleCloseFile = (relativePath: string): void => {
+    if (savingRef.current) return
+    const fileToClose = openFiles.find((file) => file.relativePath === relativePath)
+
+    if (!fileToClose) {
+      return
+    }
+
+    const isDirty = fileToClose.content !== fileToClose.savedContent
+
+    if (isDirty) {
+      setPendingClosePath(relativePath)
 
       return
     }
 
-    const newIndex =
-      Math.min(
-        closingIndex,
-        nextFiles.length - 1
-      )
-
-    setActiveFilePath(
-      nextFiles[newIndex]
-        .relativePath
-    )
+    closeFileImmediately(relativePath)
   }
-
-  window.setTimeout(() => {
-    editorRef.current?.layout()
-    editorRef.current?.focus()
-  }, 50)
-}
-
-const handleCloseFile = (
-  relativePath: string
-): void => {
-  if (savingRef.current) return
-  const fileToClose =
-    openFiles.find(
-      (file) =>
-        file.relativePath ===
-        relativePath
-    )
-
-  if (!fileToClose) {
-    return
-  }
-
-  const isDirty =
-    fileToClose.content !==
-    fileToClose.savedContent
-
-  if (isDirty) {
-    setPendingClosePath(
-      relativePath
-    )
-
-    return
-  }
-
-  closeFileImmediately(
-    relativePath
-  )
-}
 
   useEffect(() => {
-    const handleKeyDown = (
-      event: KeyboardEvent
-    ): void => {
+    const handleKeyDown = (event: KeyboardEvent): void => {
       if (
-        isActive && !blocked && (event.ctrlKey || event.metaKey) &&
+        isActive &&
+        !blocked &&
+        (event.ctrlKey || event.metaKey) &&
         event.key.toLowerCase() === 's'
       ) {
         event.preventDefault()
@@ -621,324 +470,217 @@ const handleCloseFile = (
       }
     }
 
-    window.addEventListener(
-      'keydown',
-      handleKeyDown
-    )
+    window.addEventListener('keydown', handleKeyDown)
 
     return () => {
-      window.removeEventListener(
-        'keydown',
-        handleKeyDown
-      )
+      window.removeEventListener('keydown', handleKeyDown)
     }
   }, [handleSave, isActive, blocked])
 
   return (
     <div className="code-editor-page">
-      {operationError && <div className="project-tree-error" role="alert">{operationError}</div>}
+      {operationError && (
+        <div className="project-tree-error" role="alert">
+          {operationError}
+        </div>
+      )}
       <div className="code-editor-toolbar">
         <div>
-          <strong>
-            Code Editor
-          </strong>
+          <strong>Code Editor</strong>
 
-          <span>
-            {projectName
-              ? `Project: ${projectName}`
-              : 'No project opened'}
-          </span>
+          <span>{projectName ? `Project: ${projectName}` : 'No project opened'}</span>
 
           {activeFile && (
-            <span
-              className={
-                dirty
-                  ? 'editor-save-state dirty'
-                  : 'editor-save-state'
-              }
-            >
-              {saving
-                ? 'Saving...'
-                : dirty
-                  ? 'Unsaved changes'
-                  : 'Saved'}
+            <span className={dirty ? 'editor-save-state dirty' : 'editor-save-state'}>
+              {saving ? 'Saving...' : dirty ? 'Unsaved changes' : 'Saved'}
             </span>
           )}
         </div>
-        <button type="button" className="save-all-button"
+        <button
+          type="button"
+          className="save-all-button"
           disabled={!projectPath || !hasDirtyFiles || saving || blocked}
           onClick={handleSaveAll}
-          title="Сохранить все открытые файлы с изменениями в текущем проекте">
+          title="Сохранить все открытые файлы с изменениями в текущем проекте"
+        >
           {saving ? 'Сохранение…' : 'Сохранить всё'}
         </button>
       </div>
 
       <div className="code-editor-layout">
         <aside className="project-tree">
-          <div className="project-tree-title">
-            PROJECT
-          </div>
+          <div className="project-tree-title">PROJECT</div>
 
           <div className="project-tree-content">
-            {!projectPath && (
-              <div className="project-tree-empty">
-                Open a project first
-              </div>
+            {!projectPath && <div className="project-tree-empty">Open a project first</div>}
+
+            {projectPath && treeLoading && (
+              <div className="project-tree-empty">Loading project...</div>
             )}
 
-            {projectPath &&
-              treeLoading && (
-                <div className="project-tree-empty">
-                  Loading project...
-                </div>
-              )}
-
-            {treeError && (
-              <div className="project-tree-error">
-                {treeError}
-              </div>
-            )}
+            {treeError && <div className="project-tree-error">{treeError}</div>}
 
             {!treeLoading &&
               !treeError &&
-              tree.map(
-                (node) => (
-                  <TreeNode
-                    key={
-                      node.relativePath
-                    }
-                    node={node}
-                    activeFilePath={
-                      activeFilePath ??
-                      undefined
-                    }
-                    onOpenFile={
-                      handleOpenFile
-                    }
-                  />
-                )
-              )}
+              tree.map((node) => (
+                <TreeNode
+                  key={node.relativePath}
+                  node={node}
+                  activeFilePath={activeFilePath ?? undefined}
+                  onOpenFile={handleOpenFile}
+                />
+              ))}
           </div>
         </aside>
 
         <div className="editor-area">
           <div className="editor-tabs">
-            {openFiles.length === 0 && (
-              <div className="editor-tab-placeholder">
-                No file open
-              </div>
-            )}
+            {openFiles.length === 0 && <div className="editor-tab-placeholder">No file open</div>}
 
-            {openFiles.map(
-              (file) => {
-                const isActive =
-                  file.relativePath ===
-                  activeFilePath
+            {openFiles.map((file) => {
+              const isActive = file.relativePath === activeFilePath
 
-                const isDirty =
-                  file.content !==
-                  file.savedContent
+              const isDirty = file.content !== file.savedContent
 
-                return (
-                  <div
-                    key={
-                      file.relativePath
-                    }
-                    className={`editor-tab ${
-                      isActive
-                        ? 'active'
-                        : ''
-                    }`}
-                    onClick={() =>
-                      setActiveFilePath(
-                        file.relativePath
-                      )
-                    }
+              return (
+                <div
+                  key={file.relativePath}
+                  className={`editor-tab ${isActive ? 'active' : ''}`}
+                  onClick={() => setActiveFilePath(file.relativePath)}
+                >
+                  <span>{file.name}</span>
+
+                  {isDirty && <span className="dirty-dot">●</span>}
+
+                  <button
+                    type="button"
+                    className="editor-tab-close"
+                    disabled={saving}
+                    onClick={(event) => {
+                      event.stopPropagation()
+
+                      handleCloseFile(file.relativePath)
+                    }}
                   >
-                    <span>
-                      {file.name}
-                    </span>
-
-                    {isDirty && (
-                      <span className="dirty-dot">
-                        ●
-                      </span>
-                    )}
-
-                    <button
-                      type="button"
-                      className="editor-tab-close"
-                      disabled={saving}
-                      onClick={(event) => {
-                        event.stopPropagation()
-
-                        handleCloseFile(
-                          file.relativePath
-                        )
-                      }}
-                    >
-                      ×
-                    </button>
-                  </div>
-                )
-              }
-            )}
+                    ×
+                  </button>
+                </div>
+              )
+            })}
           </div>
 
           <div className="monaco-container">
-            {fileLoading && (
+            {fileLoading && <div className="editor-empty-state">Loading file...</div>}
+
+            {!fileLoading && !activeFile && (
               <div className="editor-empty-state">
-                Loading file...
+                <strong>No file opened</strong>
+
+                <span>Выбери файл в дереве проекта слева.</span>
               </div>
             )}
 
-            {!fileLoading &&
-              !activeFile && (
-                <div className="editor-empty-state">
-                  <strong>
-                    No file opened
-                  </strong>
+            {!fileLoading && activeFile && (
+              <Editor
+                key={projectPath}
+                path={
+                  projectPath
+                    ? `espai://project/${encodeURIComponent(
+                        projectPath
+                      )}/${activeFile.relativePath.replace(/\\/g, '/')}`
+                    : activeFile.relativePath
+                }
+                height="100%"
+                onMount={(editor) => {
+                  editorRef.current = editor
 
-                  <span>
-                    Выбери файл в дереве проекта слева.
-                  </span>
-                </div>
-              )}
-
-            {!fileLoading &&
-              activeFile && (
-                <Editor
-                  key={projectPath}
-                  path={
-                    projectPath
-                      ? `espai://project/${encodeURIComponent(
-                          projectPath
-                        )}/${activeFile.relativePath.replace(
-                          /\\/g,
-                          '/'
-                        )}`
-                      : activeFile.relativePath
+                  if (isActive) {
+                    window.setTimeout(() => {
+                      editor.layout()
+                      editor.focus()
+                    }, 0)
                   }
-                  height="100%"
-		  onMount={(editor) => {
-		    editorRef.current = editor
-		    
-		    if (isActive) {
-			window.setTimeout(() => {
-				editor.layout()
-				editor.focus()
-			}, 0)
-		    }
-		  }}
-                  language={getLanguage(
-                    activeFile.name
-                  )}
-                  value={
-                    activeFile.content
-                  }
-                  theme="vs-dark"
-                  onChange={
-                    handleEditorChange
-                  }
-                  options={{
-                    readOnly: blocked,
-                    automaticLayout: true,
-                    minimap: {
-                      enabled: true
-                    },
-                    fontSize: 14,
-                    tabSize: 4,
-                    insertSpaces: true,
-                    wordWrap: 'off',
-                    scrollBeyondLastLine:
-                      false
-                  }}
-                />
-              )}
+                }}
+                language={getLanguage(activeFile.name)}
+                value={activeFile.content}
+                theme="vs-dark"
+                onChange={handleEditorChange}
+                options={{
+                  readOnly: blocked,
+                  automaticLayout: true,
+                  minimap: {
+                    enabled: true
+                  },
+                  fontSize: 14,
+                  tabSize: 4,
+                  insertSpaces: true,
+                  wordWrap: 'off',
+                  scrollBeyondLastLine: false
+                }}
+              />
+            )}
           </div>
         </div>
       </div>
 
-     <div className="editor-bottom-panel">
-  <button type="button">
-    Problems
-  </button>
+      <div className="editor-bottom-panel">
+        <button type="button">Problems</button>
 
-  <button type="button">
-    Output
-  </button>
+        <button type="button">Output</button>
 
-  <button type="button">
-    Terminal
-  </button>
+        <button type="button">Terminal</button>
 
-  <button type="button">
-    Monitor
-  </button>
-</div>
-
-{pendingClosePath && (
-  <div className="editor-confirm-overlay">
-    <div className="editor-confirm-dialog">
-      <h3>
-        Несохранённые изменения
-      </h3>
-
-      <p>
-        Файл{' '}
-        <strong>
-          {
-            openFiles.find(
-              (file) =>
-                file.relativePath ===
-                pendingClosePath
-            )?.name
-          }
-        </strong>{' '}
-        содержит несохранённые изменения.
-      </p>
-
-      <p>
-        Закрыть вкладку и потерять изменения?
-      </p>
-
-      <div className="editor-confirm-actions">
-        <button
-          type="button"
-          onClick={() => {
-            setPendingClosePath(null)
-
-            window.setTimeout(() => {
-              editorRef.current?.layout()
-              editorRef.current?.focus()
-            }, 0)
-          }}
-        >
-          Отмена
-        </button>
-
-        <button
-          type="button"
-          className="danger"
-          onClick={() => {
-            const path =
-              pendingClosePath
-
-            setPendingClosePath(null)
-
-            closeFileImmediately(
-              path
-            )
-          }}
-        >
-          Закрыть без сохранения
-        </button>
+        <button type="button">Monitor</button>
       </div>
-    </div>
-  </div>
-)}
 
-</div>
+      {pendingClosePath && (
+        <div className="editor-confirm-overlay">
+          <div className="editor-confirm-dialog">
+            <h3>Несохранённые изменения</h3>
+
+            <p>
+              Файл{' '}
+              <strong>
+                {openFiles.find((file) => file.relativePath === pendingClosePath)?.name}
+              </strong>{' '}
+              содержит несохранённые изменения.
+            </p>
+
+            <p>Закрыть вкладку и потерять изменения?</p>
+
+            <div className="editor-confirm-actions">
+              <button
+                type="button"
+                onClick={() => {
+                  setPendingClosePath(null)
+
+                  window.setTimeout(() => {
+                    editorRef.current?.layout()
+                    editorRef.current?.focus()
+                  }, 0)
+                }}
+              >
+                Отмена
+              </button>
+
+              <button
+                type="button"
+                className="danger"
+                onClick={() => {
+                  const path = pendingClosePath
+
+                  setPendingClosePath(null)
+
+                  closeFileImmediately(path)
+                }}
+              >
+                Закрыть без сохранения
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
