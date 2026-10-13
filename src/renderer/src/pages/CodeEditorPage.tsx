@@ -1,9 +1,17 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState
 } from 'react'
+import type { Dispatch, SetStateAction } from 'react'
+import {
+  emptyEditorSession,
+  markFileSaved,
+  type EditorSessions,
+  type OpenFile
+} from '../../../shared/editorSession'
 
 import Editor, {
   loader
@@ -61,17 +69,14 @@ interface ProjectTreeNode {
   children?: ProjectTreeNode[]
 }
 
-interface OpenFile {
-  name: string
-  relativePath: string
-  content: string
-  savedContent: string
-}
-
 interface CodeEditorPageProps {
   projectName?: string
   projectPath?: string
   isActive?: boolean
+  sessions: EditorSessions
+  setSessions: Dispatch<SetStateAction<EditorSessions>>
+  onSavingChange: (saving: boolean) => void
+  blocked: boolean
 }
 
 interface TreeNodeProps {
@@ -205,7 +210,11 @@ function TreeNode({
 function CodeEditorPage({
   projectName,
   projectPath,
-  isActive = true
+  isActive = true,
+  sessions,
+  setSessions,
+  onSavingChange,
+  blocked
 }: CodeEditorPageProps): React.JSX.Element {
 
   const editorRef =
@@ -222,13 +231,34 @@ function CodeEditorPage({
   const [treeError, setTreeError] =
     useState('')
 
-  const [openFiles, setOpenFiles] =
-    useState<OpenFile[]>([])
+  const session = projectPath ? sessions[projectPath] ?? emptyEditorSession : emptyEditorSession
+  const { openFiles, activeFilePath } = session
+  const setOpenFiles = (update: SetStateAction<OpenFile[]>): void => {
+    if (!projectPath) return
+    setSessions((current) => {
+      const previous = current[projectPath] ?? emptyEditorSession
+      return { ...current, [projectPath]: {
+        ...previous,
+        openFiles: typeof update === 'function' ? update(previous.openFiles) : update
+      } }
+    })
+  }
+  const setActiveFilePath = (path: string | null): void => {
+    if (!projectPath) return
+    setSessions((current) => ({ ...current, [projectPath]: {
+      ...(current[projectPath] ?? emptyEditorSession), activeFilePath: path
+    } }))
+  }
+  const generation = useRef(0)
+  const pendingReads = useRef(new Set<string>())
+  const savingRef = useRef(false)
+  const [operationError, setOperationError] = useState('')
 
-  const [
-    activeFilePath,
-    setActiveFilePath
-  ] = useState<string | null>(null)
+  useLayoutEffect(() => {
+    generation.current += 1
+    pendingReads.current.clear()
+    return () => { generation.current += 1 }
+  }, [projectPath])
 
   const [fileLoading, setFileLoading] =
     useState(false)
@@ -280,10 +310,12 @@ function CodeEditorPage({
 
     const loadTree =
       async (): Promise<void> => {
+        setFileLoading(false)
+        setPendingClosePath(null)
+        setOperationError('')
         setTree([])
         setTreeError('')
-        setOpenFiles([])
-        setActiveFilePath(null)
+        setTreeLoading(false)
 
         if (!projectPath) {
           return
@@ -311,6 +343,8 @@ function CodeEditorPage({
           }
 
           setTree(result.tree)
+        } catch (error) {
+          if (!cancelled) setTreeError(error instanceof Error ? error.message : 'Unable to load project.')
         } finally {
           if (!cancelled) {
             setTreeLoading(false)
@@ -330,7 +364,7 @@ function CodeEditorPage({
       node: ProjectTreeNode
     ): Promise<void> => {
       if (
-        !projectPath ||
+        !projectPath || blocked ||
         node.type !== 'file'
       ) {
         return
@@ -351,6 +385,10 @@ function CodeEditorPage({
         return
       }
 
+      const requestGeneration = generation.current
+      if (pendingReads.current.has(node.relativePath)) return
+      pendingReads.current.add(node.relativePath)
+      setOperationError('')
       setFileLoading(true)
 
       try {
@@ -360,8 +398,9 @@ function CodeEditorPage({
             node.relativePath
           )
 
+        if (requestGeneration !== generation.current) return
         if (!result.success) {
-          window.alert(
+          setOperationError(
             `Не удалось открыть файл.\n\n${result.error ?? 'Unknown error'}`
           )
 
@@ -380,7 +419,7 @@ function CodeEditorPage({
         }
 
         setOpenFiles(
-          (currentFiles) => [
+          (currentFiles) => currentFiles.some((file) => file.relativePath === node.relativePath) ? currentFiles : [
             ...currentFiles,
             newFile
           ]
@@ -389,15 +428,22 @@ function CodeEditorPage({
         setActiveFilePath(
           node.relativePath
         )
+      } catch (error) {
+        if (requestGeneration === generation.current) {
+          setOperationError(error instanceof Error ? error.message : 'Не удалось открыть файл.')
+        }
       } finally {
-        setFileLoading(false)
+        if (requestGeneration === generation.current) {
+          pendingReads.current.delete(node.relativePath)
+          setFileLoading(pendingReads.current.size > 0)
+        }
       }
     }
 
   const handleEditorChange = (
     value: string | undefined
   ): void => {
-    if (!activeFilePath) {
+    if (!activeFilePath || blocked) {
       return
     }
 
@@ -420,66 +466,67 @@ function CodeEditorPage({
     )
   }
 
-  const handleSave =
+  const saveFiles =
     useCallback(
-      async (): Promise<void> => {
+      async (files: OpenFile[]): Promise<void> => {
         if (
           !projectPath ||
-          !activeFile ||
-          saving
+          savingRef.current || blocked
         ) {
           return
         }
 
-        if (
-          activeFile.content ===
-          activeFile.savedContent
-        ) {
-          return
-        }
-
+        const snapshots = files.filter((file) => file.content !== file.savedContent)
+          .map((file) => ({ relativePath: file.relativePath, content: file.content }))
+        if (snapshots.length === 0) return
+        const savedProject = projectPath
+        const requestGeneration = generation.current
+        savingRef.current = true
         setSaving(true)
+        onSavingChange(true)
+        setOperationError('')
+        const errors: string[] = []
 
         try {
-          const result =
-            await window.api.saveProjectFile(
-              projectPath,
-              activeFile.relativePath,
-              activeFile.content
-            )
-
-          if (!result.success) {
-            window.alert(
-              `Не удалось сохранить файл.\n\n${result.error ?? 'Unknown error'}`
-            )
-
-            return
-          }
-
-          setOpenFiles(
-            (currentFiles) =>
-              currentFiles.map(
-                (file) =>
-                  file.relativePath ===
-                  activeFile.relativePath
-                    ? {
-                        ...file,
-                        savedContent:
-                          file.content
-                      }
-                    : file
+          for (const snapshot of snapshots) {
+            try {
+              const result = await window.api.saveProjectFile(
+                savedProject, snapshot.relativePath, snapshot.content
               )
-          )
+              if (!result.success) {
+                errors.push(`${snapshot.relativePath}: ${result.error ?? 'Не удалось сохранить файл.'}`)
+                continue
+              }
+              setSessions((current) => ({ ...current, [savedProject]: markFileSaved(
+                current[savedProject] ?? emptyEditorSession, snapshot.relativePath, snapshot.content
+              ) }))
+            } catch (error) {
+              errors.push(`${snapshot.relativePath}: ${error instanceof Error ? error.message : 'Не удалось сохранить файл.'}`)
+            }
+          }
+          if (errors.length > 0 && requestGeneration === generation.current) {
+            setOperationError(`Не удалось сохранить: ${errors.join('; ')}`)
+          }
         } finally {
+          savingRef.current = false
           setSaving(false)
+          onSavingChange(false)
         }
       },
       [
         projectPath,
-        activeFile,
-        saving
+        setSessions,
+        onSavingChange,
+        blocked
       ]
     )
+
+  const handleSave = useCallback(async (): Promise<void> => {
+    if (activeFile) await saveFiles([activeFile])
+  }, [activeFile, saveFiles])
+
+  const handleSaveAll = (): void => { void saveFiles(openFiles) }
+  const hasDirtyFiles = openFiles.some((file) => file.content !== file.savedContent)
 
   const closeFileImmediately = (
   relativePath: string
@@ -531,6 +578,7 @@ function CodeEditorPage({
 const handleCloseFile = (
   relativePath: string
 ): void => {
+  if (savingRef.current) return
   const fileToClose =
     openFiles.find(
       (file) =>
@@ -564,7 +612,7 @@ const handleCloseFile = (
       event: KeyboardEvent
     ): void => {
       if (
-        event.ctrlKey &&
+        isActive && !blocked && (event.ctrlKey || event.metaKey) &&
         event.key.toLowerCase() === 's'
       ) {
         event.preventDefault()
@@ -584,10 +632,11 @@ const handleCloseFile = (
         handleKeyDown
       )
     }
-  }, [handleSave])
+  }, [handleSave, isActive, blocked])
 
   return (
     <div className="code-editor-page">
+      {operationError && <div className="project-tree-error" role="alert">{operationError}</div>}
       <div className="code-editor-toolbar">
         <div>
           <strong>
@@ -616,6 +665,12 @@ const handleCloseFile = (
             </span>
           )}
         </div>
+        <button type="button" className="save-all-button"
+          disabled={!projectPath || !hasDirtyFiles || saving || blocked}
+          onClick={handleSaveAll}
+          title="Сохранить все открытые файлы с изменениями в текущем проекте">
+          {saving ? 'Сохранение…' : 'Сохранить всё'}
+        </button>
       </div>
 
       <div className="code-editor-layout">
@@ -713,6 +768,7 @@ const handleCloseFile = (
                     <button
                       type="button"
                       className="editor-tab-close"
+                      disabled={saving}
                       onClick={(event) => {
                         event.stopPropagation()
 
@@ -752,6 +808,7 @@ const handleCloseFile = (
             {!fileLoading &&
               activeFile && (
                 <Editor
+                  key={projectPath}
                   path={
                     projectPath
                       ? `espai://project/${encodeURIComponent(
@@ -784,6 +841,7 @@ const handleCloseFile = (
                     handleEditorChange
                   }
                   options={{
+                    readOnly: blocked,
                     automaticLayout: true,
                     minimap: {
                       enabled: true

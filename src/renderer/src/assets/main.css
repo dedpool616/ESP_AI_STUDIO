@@ -2,6 +2,73 @@
   box-sizing: border-box;
 }
 
+.app-storage-error {
+  position: fixed;
+  right: 16px;
+  bottom: 36px;
+  z-index: 1100;
+  max-width: 480px;
+  padding: 12px;
+  border: 1px solid #743c3c;
+  border-radius: 6px;
+  background: #2a1d1d;
+  color: #ff9d9d;
+}
+
+.unavailable-project-path {
+  overflow-wrap: anywhere;
+}
+
+.unavailable-project-actions {
+  flex-wrap: wrap;
+}
+
+.recent-project-menu {
+  position: fixed;
+  z-index: 1500;
+  width: 200px;
+  padding: 5px;
+  border: 1px solid #353b47;
+  border-radius: 8px;
+  background: #181b21;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.recent-project-menu button {
+  width: 100%;
+  padding: 10px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.recent-project-menu button:hover,
+.recent-project-menu button:focus-visible {
+  background: #283044;
+  outline: none;
+}
+
+.code-editor-toolbar {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.save-all-button {
+  flex-shrink: 0;
+  padding: 7px 12px;
+  border: 1px solid #3b414d;
+  border-radius: 6px;
+  background: #242831;
+  cursor: pointer;
+}
+
+.save-all-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 html,
 body,
 #root {

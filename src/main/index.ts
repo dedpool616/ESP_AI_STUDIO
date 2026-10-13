@@ -12,12 +12,14 @@ import {
   access,
   readdir,
   readFile,
-  stat
+  stat,
+  rename
 } from 'fs/promises'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { parseEditorSessions, type EditorSessions } from '../shared/editorSession'
 
 const execFileAsync = promisify(execFile)
 
@@ -32,11 +34,13 @@ interface StoredProjectInfo {
 interface AppState {
   currentProject: StoredProjectInfo | null
   recentProjects: StoredProjectInfo[]
+  editorSessions: EditorSessions
 }
 
 const defaultAppState: AppState = {
   currentProject: null,
-  recentProjects: []
+  recentProjects: [],
+  editorSessions: {}
 }
 
 function getAppStatePath(): string {
@@ -58,6 +62,7 @@ async function loadAppState(): Promise<AppState> {
       JSON.parse(content)
 
     return {
+      editorSessions: parseEditorSessions(parsed.editorSessions),
       currentProject:
         parsed.currentProject ?? null,
 
@@ -73,31 +78,18 @@ async function loadAppState(): Promise<AppState> {
   }
 }
 
-async function saveAppState(
-  state: AppState
-): Promise<void> {
-  const userDataPath =
-    app.getPath('userData')
+let stateWriteQueue: Promise<void> = Promise.resolve()
 
-  await mkdir(
-    userDataPath,
-    {
-      recursive: true
-    }
-  )
-
-  await writeFile(
-    join(
-      userDataPath,
-      'app-state.json'
-    ),
-    JSON.stringify(
-      state,
-      null,
-      2
-    ),
-    'utf8'
-  )
+function saveAppState(state: AppState): Promise<void> {
+  const snapshot = JSON.stringify(state, null, 2)
+  const write = stateWriteQueue.catch(() => undefined).then(async () => {
+    const statePath = getAppStatePath()
+    await mkdir(app.getPath('userData'), { recursive: true })
+    await writeFile(`${statePath}.tmp`, snapshot, 'utf8')
+    await rename(`${statePath}.tmp`, statePath)
+  })
+  stateWriteQueue = write
+  return write
 }
 
 interface CreateProjectRequest {
@@ -254,6 +246,22 @@ function createWindow(): void {
     }
   })
 
+  let closeAllowed = false
+  const confirmClose = (event: Electron.IpcMainEvent): void => {
+    if (event.sender !== mainWindow.webContents) return
+    closeAllowed = true
+    mainWindow.close()
+  }
+  ipcMain.on('window:confirm-close', confirmClose)
+  mainWindow.on('close', (event) => {
+    if (closeAllowed) return
+    event.preventDefault()
+    mainWindow.webContents.send('window:request-close')
+  })
+  mainWindow.on('closed', () => {
+    ipcMain.removeListener('window:confirm-close', confirmClose)
+  })
+
   mainWindow.on(
     'ready-to-show',
     () => {
@@ -372,30 +380,29 @@ ipcMain.handle(
         /*
    * Open existing ESP-IDF project
    */
-  ipcMain.handle(
-    'project:open',
-    async () => {
+  const inspectProject = async (selectedPath: string): Promise<{
+    success: boolean
+    project?: StoredProjectInfo
+    error?: string
+  }> => {
       try {
-        const result =
-          await dialog.showOpenDialog({
-            title: 'Open ESP-IDF Project',
-            properties: [
-              'openDirectory'
-            ]
-          })
-
-        if (
-          result.canceled ||
-          result.filePaths.length === 0
-        ) {
+        if (typeof selectedPath !== 'string' || !isAbsolute(selectedPath)) {
           return {
             success: false,
-            canceled: true
+            error: 'Укажите абсолютный путь к папке проекта.'
           }
         }
 
         const projectPath =
-          resolve(result.filePaths[0])
+          resolve(selectedPath)
+
+        try {
+          if (!(await stat(projectPath)).isDirectory()) {
+            return { success: false, error: 'Путь проекта не является папкой.' }
+          }
+        } catch {
+          return { success: false, error: 'Папка проекта недоступна. Возможно, она удалена или перемещена.' }
+        }
 
         const cmakePath =
           join(
@@ -608,7 +615,22 @@ return {
         }
       }
     }
-  )
+
+  ipcMain.handle('project:inspect', (_, projectPath: string) => inspectProject(projectPath))
+  ipcMain.handle('project:open', async () => {
+    try {
+      const result = await dialog.showOpenDialog({
+        title: 'Open ESP-IDF Project',
+        properties: ['openDirectory']
+      })
+      if (result.canceled || result.filePaths.length === 0) {
+        return { success: false, canceled: true }
+      }
+      return await inspectProject(result.filePaths[0])
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Не удалось открыть проект.' }
+    }
+  })
 
   /*
    * Create ESP-IDF project

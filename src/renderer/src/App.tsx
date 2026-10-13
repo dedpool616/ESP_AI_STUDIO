@@ -1,8 +1,14 @@
 import {
   useEffect,
+  useCallback,
+  useLayoutEffect,
+  useRef,
   useState
 } from 'react'
 import CodeEditorPage from './pages/CodeEditorPage'
+import ProjectUnavailableDialog from './components/ProjectUnavailableDialog'
+import RecentProjectMenu from './components/RecentProjectMenu'
+import { emptyEditorSession, hasUnsavedChanges, parseEditorSessions, relocateEditorSession, type EditorSessions } from '../../shared/editorSession'
 
 interface ProjectInfo {
   name: string
@@ -16,6 +22,7 @@ function App(): React.JSX.Element {
   const [showNewProject, setShowNewProject] = useState(false)
 
   const [projectName, setProjectName] = useState('')
+  const projectNameInputRef = useRef<HTMLInputElement>(null)
   const [projectLocation, setProjectLocation] = useState('')
   const [board, setBoard] = useState('')
   const [idfVersion, setIdfVersion] = useState('recommended')
@@ -35,6 +42,9 @@ function App(): React.JSX.Element {
 
   const [recentProjects, setRecentProjects] =
     useState<ProjectInfo[]>([])
+  const [recentMenu, setRecentMenu] = useState<{
+    project: ProjectInfo; x: number; y: number; trigger: HTMLButtonElement
+  } | null>(null)
 
     const [
   isAppStateLoaded,
@@ -42,6 +52,56 @@ function App(): React.JSX.Element {
 ] = useState(false)
 
   const [activePage, setActivePage] = useState('Home')
+  const [editorSessions, setEditorSessions] = useState<EditorSessions>({})
+  const [editorSaving, setEditorSaving] = useState(false)
+  const [pendingProject, setPendingProject] = useState<ProjectInfo | null>(null)
+  const [closeRequested, setCloseRequested] = useState(false)
+  const [closing, setClosing] = useState(false)
+  const [storageError, setStorageError] = useState('')
+  const [projectError, setProjectError] = useState('')
+  const [unavailableProject, setUnavailableProject] = useState<{ project: ProjectInfo; error: string } | null>(null)
+  const [projectBusy, setProjectBusy] = useState(false)
+  const projectBusyRef = useRef(false)
+  const [closeProjectRequested, setCloseProjectRequested] = useState(false)
+  const snapshotRef = useRef({ currentProject, recentProjects, editorSessions })
+  useLayoutEffect(() => {
+    snapshotRef.current = { currentProject, recentProjects, editorSessions }
+  }, [currentProject, recentProjects, editorSessions])
+
+  useEffect(() => window.api.onCloseRequested(() => setCloseRequested(true)), [])
+
+  const activateProject = (project: ProjectInfo): void => {
+    if (editorSaving || (project.path !== currentProject?.path && currentProject &&
+        hasUnsavedChanges(editorSessions[currentProject.path] ?? emptyEditorSession))) {
+      setPendingProject(project)
+      return
+    }
+    setCurrentProject(project)
+    setActivePage('Dashboard')
+  }
+
+  const finishClose = async (): Promise<void> => {
+    if (!isAppStateLoaded || editorSaving || closing || projectBusy || isCreating) return
+    setClosing(true)
+    setStorageError('')
+    try {
+      // Flush the latest snapshot; a pending file read may complete while saving.
+      let snapshot: typeof snapshotRef.current
+      do {
+        snapshot = snapshotRef.current
+        const result = await window.api.saveAppState(snapshot)
+        if (!result.success) throw new Error(result.error ?? 'Не удалось сохранить сессии.')
+      } while (snapshot !== snapshotRef.current)
+      window.api.confirmClose()
+    } catch (error) {
+      setStorageError(error instanceof Error ? error.message : 'Не удалось сохранить сессии.')
+      setClosing(false)
+    }
+  }
+
+  const updateSessions = useCallback<typeof setEditorSessions>((update) => {
+    setEditorSessions(update)
+  }, [])
 
   useEffect(() => {
   let cancelled = false
@@ -56,9 +116,7 @@ function App(): React.JSX.Element {
           return
         }
 
-        setCurrentProject(
-          state.currentProject
-        )
+        setEditorSessions(parseEditorSessions(state.editorSessions))
 
         setRecentProjects(
           state.recentProjects.slice(
@@ -66,7 +124,17 @@ function App(): React.JSX.Element {
             8
           )
         )
+        if (state.currentProject) {
+          const result = await window.api.inspectProject(state.currentProject.path)
+          if (cancelled) return
+          if (result.success && result.project) {
+            setCurrentProject(result.project)
+          } else {
+            setUnavailableProject({ project: state.currentProject, error: result.error ?? 'Проект недоступен.' })
+          }
+        }
       } catch (error) {
+        if (!cancelled) setProjectError(error instanceof Error ? error.message : 'Не удалось восстановить проект.')
         console.error(
           'Unable to restore app state:',
           error
@@ -86,7 +154,7 @@ function App(): React.JSX.Element {
 }, [])
 
 useEffect(() => {
-  if (!isAppStateLoaded) {
+  if (!isAppStateLoaded || closing) {
     return
   }
 
@@ -96,16 +164,19 @@ useEffect(() => {
         const result =
           await window.api.saveAppState({
             currentProject,
-            recentProjects
+            recentProjects,
+            editorSessions
           })
 
         if (!result.success) {
+          setStorageError(result.error ?? 'Не удалось сохранить состояние IDE.')
           console.error(
             'Unable to save app state:',
             result.error
           )
-        }
+        } else { setStorageError('') }
       } catch (error) {
+        setStorageError(error instanceof Error ? error.message : 'Не удалось сохранить состояние IDE.')
         console.error(
           'Unable to save app state:',
           error
@@ -113,11 +184,14 @@ useEffect(() => {
       }
     }
 
-  void persistAppState()
+  const timer = window.setTimeout(() => { void persistAppState() }, 300)
+  return () => window.clearTimeout(timer)
 }, [
   currentProject,
   recentProjects,
-  isAppStateLoaded
+  editorSessions,
+  isAppStateLoaded,
+  closing
 ])
 
 const navigation = [
@@ -139,6 +213,11 @@ const navigation = [
 
 const handleOpenProject =
   async (): Promise<void> => {
+    if (projectBusyRef.current) return
+    projectBusyRef.current = true
+    setProjectBusy(true)
+    setProjectError('')
+    try {
     const result =
       await window.api.openProject()
 
@@ -150,7 +229,7 @@ const handleOpenProject =
       !result.success ||
       !result.project
     ) {
-      window.alert(
+      setProjectError(
         `Не удалось открыть проект.\n\n${
           result.error ??
           'Unknown error'
@@ -178,9 +257,7 @@ const handleOpenProject =
           result.project.gitMode
       }
 
-    setCurrentProject(
-      openedProject
-    )
+    activateProject(openedProject)
 
     setRecentProjects(
       (projects) => {
@@ -198,7 +275,75 @@ const handleOpenProject =
       }
     )
 
-    setActivePage('Dashboard')
+    } catch (error) {
+      setProjectError(error instanceof Error ? error.message : 'Не удалось открыть проект.')
+    } finally {
+      projectBusyRef.current = false
+      setProjectBusy(false)
+    }
+  }
+
+  const handleRecentProject = async (project: ProjectInfo): Promise<void> => {
+    if (projectBusyRef.current || editorSaving) return
+    projectBusyRef.current = true
+    setProjectBusy(true)
+    setProjectError('')
+    try {
+      const result = await window.api.inspectProject(project.path)
+      if (!result.success || !result.project) {
+        setUnavailableProject({ project, error: result.error ?? 'Проект недоступен.' })
+        return
+      }
+      const opened = result.project
+      setRecentProjects((projects) => [opened, ...projects.filter((item) => item.path !== opened.path)].slice(0, 8))
+      activateProject(opened)
+    } catch (error) {
+      setUnavailableProject({ project, error: error instanceof Error ? error.message : 'Не удалось проверить проект.' })
+    } finally {
+      projectBusyRef.current = false
+      setProjectBusy(false)
+    }
+  }
+
+  const relocateProject = async (): Promise<void> => {
+    if (!unavailableProject || projectBusyRef.current || editorSaving) return
+    projectBusyRef.current = true
+    setProjectBusy(true)
+    const previous = unavailableProject.project
+    try {
+      const folder = await window.api.selectFolder()
+      if (!folder) return
+      const result = await window.api.inspectProject(folder)
+      if (!result.success || !result.project) throw new Error(result.error ?? 'Выбранная папка не является ESP-IDF проектом.')
+      const relocated = result.project
+      // The dialog blocks editing while the filesystem is checked.
+      const sessions = relocateEditorSession(snapshotRef.current.editorSessions, previous.path, relocated.path)
+      setEditorSessions(sessions)
+      setRecentProjects((projects) => [relocated, ...projects.filter((item) => item.path !== previous.path && item.path !== relocated.path)].slice(0, 8))
+      setUnavailableProject(null)
+      if (currentProject?.path === previous.path) {
+        setCurrentProject(relocated)
+        setActivePage('Dashboard')
+      } else { activateProject(relocated) }
+    } catch (error) {
+      setUnavailableProject({ project: previous, error: error instanceof Error ? error.message : 'Не удалось изменить расположение проекта.' })
+    } finally {
+      projectBusyRef.current = false
+      setProjectBusy(false)
+    }
+  }
+
+  const closeProject = (): void => {
+    setCurrentProject(null)
+    setActivePage('Home')
+    setCloseProjectRequested(false)
+  }
+
+  const requestCloseProject = (): void => {
+    if (!currentProject || editorSaving || projectBusy) return
+    if (hasUnsavedChanges(editorSessions[currentProject.path] ?? emptyEditorSession)) {
+      setCloseProjectRequested(true)
+    } else { closeProject() }
   }
 
 
@@ -220,15 +365,24 @@ const handleOpenProject =
 
   const handleCreateProject = 
     async (): Promise<void> => {
+      if (isCreating) return
       setProjectFormError('')
+      const normalizedName = projectName.trim()
       
-      if (!projectName.trim()) {
+      if (!normalizedName) {
   setProjectFormError(
     'Введите имя проекта.'
   )
+  projectNameInputRef.current?.focus()
 
   return
 }
+
+      if (!/^[A-Za-z0-9_-]+$/.test(normalizedName)) {
+        setProjectFormError('Используйте только латинские буквы A–Z, a–z, цифры, дефис (-) и подчёркивание (_). Русские буквы и пробелы в имени проекта не поддерживаются.')
+        projectNameInputRef.current?.focus()
+        return
+      }
 
     if (!projectLocation) {
   setProjectFormError(
@@ -242,7 +396,7 @@ const handleOpenProject =
 
     try {
       const result = await window.api.createProject({
-        projectName: projectName.trim(),
+        projectName: normalizedName,
         location: projectLocation,
         board,
         idfVersion,
@@ -250,23 +404,23 @@ const handleOpenProject =
       })
 
       if (!result.success || !result.projectPath) {
-        window.alert(
-          `Не удалось создать проект.\n\n${result.error ?? 'Unknown error'}`
+        setProjectFormError(
+          `Не удалось создать проект: ${result.error ?? 'Неизвестная ошибка.'}`
         )
+        projectNameInputRef.current?.focus()
 
         return
       }
 
       const newProject: ProjectInfo = {
-        name: projectName.trim(),
+        name: normalizedName,
         path: result.projectPath,
         board,
         idfVersion,
         gitMode
       }
 
-      setCurrentProject(newProject)
-      setActivePage('Dashboard')
+      activateProject(newProject)
 
       setRecentProjects((projects) => {
         const filteredProjects = projects.filter(
@@ -278,6 +432,9 @@ const handleOpenProject =
 
       setShowNewProject(false)
       resetNewProjectForm()
+    } catch (error) {
+      setProjectFormError(`Не удалось создать проект: ${error instanceof Error ? error.message : 'Неизвестная ошибка.'}`)
+      projectNameInputRef.current?.focus()
     } finally {
       setIsCreating(false)
     }
@@ -327,6 +484,7 @@ const handleOpenProject =
 
   return (
     <div className="app-shell">
+      {storageError && <div className="app-storage-error" role="alert">{storageError}</div>}
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark">ESP</div>
@@ -356,6 +514,10 @@ const handleOpenProject =
             </button>
           ))}
         </nav>
+        {currentProject && (
+          <button type="button" className="nav-item" disabled={editorSaving || projectBusy || !isAppStateLoaded}
+            onClick={requestCloseProject}>Close Project</button>
+        )}
       </aside>
 
       <main className="workspace">
@@ -387,6 +549,7 @@ const handleOpenProject =
       : ''
   }`}
 >
+  {projectError && <div className="project-form-error" role="alert">{projectError}</div>}
 
   {activePage === 'Home' && (
     <>
@@ -403,6 +566,7 @@ const handleOpenProject =
             <button
               className="primary-action"
               type="button"
+              disabled={!isAppStateLoaded || editorSaving || projectBusy}
               onClick={() => setShowNewProject(true)}
             >
               <span className="action-symbol">+</span>
@@ -416,6 +580,7 @@ const handleOpenProject =
             <button
               className="secondary-action"
               type="button"
+              disabled={!isAppStateLoaded || editorSaving || projectBusy}
               onClick={() => {
                 void handleOpenProject()
               }}
@@ -465,9 +630,13 @@ const handleOpenProject =
                 key={project.path}
                 type="button"
                 className="recent-project-card"
+                disabled={editorSaving || projectBusy || !isAppStateLoaded}
+                onContextMenu={(event) => {
+                  event.preventDefault()
+                  setRecentMenu({ project, x: event.clientX, y: event.clientY, trigger: event.currentTarget })
+                }}
                 onClick={() => {
-                  setCurrentProject(project)
-                  setActivePage('Dashboard')
+                  void handleRecentProject(project)
                 }}
               >
                 <div>
@@ -582,6 +751,10 @@ const handleOpenProject =
   }`}
 >
   <CodeEditorPage
+    blocked={closeRequested || closeProjectRequested || !!pendingProject || !!unavailableProject || projectBusy || showNewProject || !isAppStateLoaded}
+    sessions={editorSessions}
+    setSessions={updateSessions}
+    onSavingChange={setEditorSaving}
     projectName={currentProject?.name}
     projectPath={currentProject?.path}
     isActive={
@@ -618,6 +791,78 @@ const handleOpenProject =
         </footer>
       </main>
 
+      {recentMenu && activePage === 'Home' && !unavailableProject && !closeRequested && !pendingProject && !showNewProject && (
+        <RecentProjectMenu x={recentMenu.x} y={recentMenu.y} trigger={recentMenu.trigger}
+          onClose={() => setRecentMenu(null)}
+          onRemove={() => {
+            setRecentProjects((projects) => projects.filter((project) => project.path !== recentMenu.project.path))
+            setRecentMenu(null)
+          }} />
+      )}
+      {unavailableProject && !closeRequested && (
+        <ProjectUnavailableDialog
+          name={unavailableProject.project.name}
+          path={unavailableProject.project.path}
+          error={unavailableProject.error}
+          busy={projectBusy}
+          onCancel={() => setUnavailableProject(null)}
+          onLocate={() => { void relocateProject() }}
+          onRemove={() => {
+            const path = unavailableProject.project.path
+            setRecentProjects((projects) => projects.filter((project) => project.path !== path))
+            if (currentProject?.path === path) closeProject()
+            setUnavailableProject(null)
+          }}
+        />
+      )}
+      {(pendingProject || closeRequested || closeProjectRequested) && (
+        <div className="editor-confirm-overlay">
+          <div className="editor-confirm-dialog" role="dialog" aria-modal="true" aria-label={closeRequested ? 'Закрытие программы' : closeProjectRequested ? 'Закрытие проекта' : 'Переключение проекта'}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape' && !closing) {
+                event.preventDefault()
+                setPendingProject(null)
+                setCloseRequested(false)
+                setCloseProjectRequested(false)
+              }
+              if (event.key === 'Tab') {
+                const buttons = event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')
+                const first = buttons[0], last = buttons[buttons.length - 1]
+                if (!first) { event.preventDefault(); return }
+                if (event.shiftKey && document.activeElement === first) {
+                  event.preventDefault(); last.focus()
+                } else if (!event.shiftKey && document.activeElement === last) {
+                  event.preventDefault(); first.focus()
+                }
+              }
+            }}>
+            <h3>{closeRequested ? 'Закрыть ESP AI Studio?' : closeProjectRequested ? 'Закрыть проект?' : 'Переключить проект?'}</h3>
+            <p>{Object.values(editorSessions).some(hasUnsavedChanges)
+              ? 'Есть несохранённые изменения. Они останутся в сессиях редактора; исходные файлы на диске не изменятся.'
+              : 'Вкладки и активные файлы будут сохранены для следующего запуска.'}</p>
+            {editorSaving && <p>Дождитесь завершения сохранения файла.</p>}
+            {(projectBusy || isCreating) && <p>Дождитесь завершения операции с проектом.</p>}
+            {!isAppStateLoaded && <p>Дождитесь загрузки состояния IDE.</p>}
+            {storageError && <p role="alert">{storageError}</p>}
+            <div className="editor-confirm-actions">
+              <button type="button" autoFocus disabled={closing} onClick={() => {
+                setPendingProject(null)
+                setCloseRequested(false)
+                setCloseProjectRequested(false)
+              }}>Отмена</button>
+              <button type="button" disabled={closing || editorSaving || projectBusy || isCreating || !isAppStateLoaded} onClick={() => {
+                if (closeRequested) { void finishClose(); return }
+                if (closeProjectRequested) { closeProject(); return }
+                if (pendingProject) {
+                  setCurrentProject(pendingProject)
+                  setActivePage('Dashboard')
+                  setPendingProject(null)
+                }
+              }}>{closing ? 'Сохранение сессий…' : closeRequested ? 'Сохранить сессии и выйти' : closeProjectRequested ? 'Закрыть, сохранив сессию' : 'Переключить, сохранив правки'}</button>
+            </div>
+          </div>
+        </div>
+      )}
       {showNewProject && (
         <div className="modal-overlay">
           <div className="project-modal">
@@ -646,19 +891,19 @@ const handleOpenProject =
                 <span>Project name</span>
 
                 <input
+                  ref={projectNameInputRef}
                   type="text"
                   value={projectName}
                   placeholder="MyESPProject"
-                  onChange={(event) =>
-                    setProjectName(
-                      event.target.value
-                    )
-                  }
+                  aria-describedby={projectFormError ? 'project-form-error' : undefined}
+                  onChange={(event) => {
+                    setProjectName(event.target.value)
+                    setProjectFormError('')
+                  }}
                 />
 
                 <small>
-                  Используй буквы, цифры,
-                  "-" или "_".
+                  Используй латинские буквы A–Z, a–z, цифры, дефис (-) или подчёркивание (_).
                 </small>
               </label>
 
@@ -785,7 +1030,7 @@ const handleOpenProject =
             </div>
 
             {projectFormError && (
-              <div className="project-form-error">
+              <div className="project-form-error" id="project-form-error" role="alert">
                 {projectFormError}
               </div>
             )}

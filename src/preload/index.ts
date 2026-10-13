@@ -19,6 +19,13 @@ interface CreateProjectOptions {
 }
 
 const api = {
+  inspectProject: (projectPath: string) => ipcRenderer.invoke('project:inspect', projectPath),
+  onCloseRequested: (callback: () => void) => {
+    const listener = (): void => callback()
+    ipcRenderer.on('window:request-close', listener)
+    return () => ipcRenderer.removeListener('window:request-close', listener)
+  },
+  confirmClose: (): void => ipcRenderer.send('window:confirm-close'),
   selectFolder:
     (): Promise<string | null> => {
       return ipcRenderer.invoke(
@@ -106,9 +113,11 @@ if (process.contextIsolated) {
     console.error(error)
   }
 } else {
-  // @ts-ignore
-  window.electron = electronAPI
+  const preloadWindow = window as typeof window & {
+    electron: typeof electronAPI
+    api: typeof api
+  }
+  preloadWindow.electron = electronAPI
 
-  // @ts-ignore
-  window.api = api
+  preloadWindow.api = api
 }

@@ -1,6 +1,7 @@
 import {
   ElectronAPI
 } from '@electron-toolkit/preload'
+import type { EditorSessions } from '../shared/editorSession'
 
 interface ProjectTreeNode {
   name: string
@@ -72,6 +73,7 @@ interface StoredProjectInfo {
 }
 
 interface StoredAppState {
+  editorSessions: EditorSessions
   currentProject:
     | StoredProjectInfo
     | null
@@ -86,6 +88,9 @@ interface SaveAppStateResult {
 }
 
 interface ESPAIStudioAPI {
+  inspectProject: (projectPath: string) => Promise<OpenProjectResult>
+  onCloseRequested: (callback: () => void) => () => void
+  confirmClose: () => void
   selectFolder:
     () => Promise<string | null>
 
