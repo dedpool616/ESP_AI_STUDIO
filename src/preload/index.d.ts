@@ -60,9 +60,42 @@ interface SaveFileResult {
   error?: string
 }
 
+interface StoredProjectInfo {
+  name: string
+  path: string
+  board: string
+  idfVersion: string
+  gitMode:
+    | 'local'
+    | 'github'
+    | 'none'
+}
+
+interface StoredAppState {
+  currentProject:
+    | StoredProjectInfo
+    | null
+
+  recentProjects:
+    StoredProjectInfo[]
+}
+
+interface SaveAppStateResult {
+  success: boolean
+  error?: string
+}
+
 interface ESPAIStudioAPI {
   selectFolder:
     () => Promise<string | null>
+
+    loadAppState:
+  () => Promise<StoredAppState>
+
+saveAppState:
+  (
+    state: StoredAppState
+  ) => Promise<SaveAppStateResult>
 
   openProject:
     () => Promise<OpenProjectResult>

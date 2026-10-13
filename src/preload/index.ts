@@ -26,6 +26,21 @@ const api = {
       )
     },
 
+    loadAppState: () => {
+  return ipcRenderer.invoke(
+    'storage:load-app-state'
+  )
+},
+
+saveAppState: (
+  state: unknown
+) => {
+  return ipcRenderer.invoke(
+    'storage:save-app-state',
+    state
+  )
+},
+
     openProject: () => {
     return ipcRenderer.invoke(
       'project:open'

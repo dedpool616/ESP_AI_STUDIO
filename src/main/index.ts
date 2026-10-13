@@ -21,6 +21,85 @@ import icon from '../../resources/icon.png?asset'
 
 const execFileAsync = promisify(execFile)
 
+interface StoredProjectInfo {
+  name: string
+  path: string
+  board: string
+  idfVersion: string
+  gitMode: 'local' | 'github' | 'none'
+}
+
+interface AppState {
+  currentProject: StoredProjectInfo | null
+  recentProjects: StoredProjectInfo[]
+}
+
+const defaultAppState: AppState = {
+  currentProject: null,
+  recentProjects: []
+}
+
+function getAppStatePath(): string {
+  return join(
+    app.getPath('userData'),
+    'app-state.json'
+  )
+}
+
+async function loadAppState(): Promise<AppState> {
+  try {
+    const content =
+      await readFile(
+        getAppStatePath(),
+        'utf8'
+      )
+
+    const parsed =
+      JSON.parse(content)
+
+    return {
+      currentProject:
+        parsed.currentProject ?? null,
+
+      recentProjects:
+        Array.isArray(
+          parsed.recentProjects
+        )
+          ? parsed.recentProjects
+          : []
+    }
+  } catch {
+    return defaultAppState
+  }
+}
+
+async function saveAppState(
+  state: AppState
+): Promise<void> {
+  const userDataPath =
+    app.getPath('userData')
+
+  await mkdir(
+    userDataPath,
+    {
+      recursive: true
+    }
+  )
+
+  await writeFile(
+    join(
+      userDataPath,
+      'app-state.json'
+    ),
+    JSON.stringify(
+      state,
+      null,
+      2
+    ),
+    'utf8'
+  )
+}
+
 interface CreateProjectRequest {
   projectName: string
   location: string
@@ -226,27 +305,69 @@ app.whenReady().then(() => {
   /*
    * Select folder
    */
-  ipcMain.handle(
-    'dialog:select-folder',
-    async () => {
-      const result =
-        await dialog.showOpenDialog({
-          properties: [
-            'openDirectory',
-            'createDirectory'
-          ]
-        })
+ipcMain.handle(
+  'dialog:select-folder',
+  async () => {
+    const result =
+      await dialog.showOpenDialog({
+        properties: [
+          'openDirectory',
+          'createDirectory'
+        ]
+      })
 
-      if (
-        result.canceled ||
-        result.filePaths.length === 0
-      ) {
-        return null
-      }
-
-      return result.filePaths[0]
+    if (
+      result.canceled ||
+      result.filePaths.length === 0
+    ) {
+      return null
     }
-  )
+
+    return result.filePaths[0]
+  }
+)
+
+/*
+ * Load application state
+ */
+ipcMain.handle(
+  'storage:load-app-state',
+  async () => {
+    return await loadAppState()
+  }
+)
+
+/*
+ * Save application state
+ */
+ipcMain.handle(
+  'storage:save-app-state',
+  async (
+    _,
+    state: AppState
+  ) => {
+    try {
+      await saveAppState(state)
+
+      return {
+        success: true
+      }
+    } catch (error) {
+      console.error(
+        'Failed to save app state:',
+        error
+      )
+
+      return {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Unable to save application state.'
+      }
+    }
+  }
+)
 
         /*
    * Open existing ESP-IDF project

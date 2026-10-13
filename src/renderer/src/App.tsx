@@ -1,4 +1,7 @@
-import { useState } from 'react'
+import {
+  useEffect,
+  useState
+} from 'react'
 import CodeEditorPage from './pages/CodeEditorPage'
 
 interface ProjectInfo {
@@ -33,21 +36,106 @@ function App(): React.JSX.Element {
   const [recentProjects, setRecentProjects] =
     useState<ProjectInfo[]>([])
 
+    const [
+  isAppStateLoaded,
+  setIsAppStateLoaded
+] = useState(false)
+
   const [activePage, setActivePage] = useState('Home')
 
-  const navigation = [
-    'Home',
-    'AI',
-    'Code Editor',
-    'AI + Code',
-    'Pin Manager',
-    'Monitor',
-    'Terminal',
-    'Git',
-    'Activity',
-    'User Guide',
-    'Settings'
-  ]
+  useEffect(() => {
+  let cancelled = false
+
+  const restoreAppState =
+    async (): Promise<void> => {
+      try {
+        const state =
+          await window.api.loadAppState()
+
+        if (cancelled) {
+          return
+        }
+
+        setCurrentProject(
+          state.currentProject
+        )
+
+        setRecentProjects(
+          state.recentProjects.slice(
+            0,
+            8
+          )
+        )
+      } catch (error) {
+        console.error(
+          'Unable to restore app state:',
+          error
+        )
+      } finally {
+        if (!cancelled) {
+          setIsAppStateLoaded(true)
+        }
+      }
+    }
+
+  void restoreAppState()
+
+  return () => {
+    cancelled = true
+  }
+}, [])
+
+useEffect(() => {
+  if (!isAppStateLoaded) {
+    return
+  }
+
+  const persistAppState =
+    async (): Promise<void> => {
+      try {
+        const result =
+          await window.api.saveAppState({
+            currentProject,
+            recentProjects
+          })
+
+        if (!result.success) {
+          console.error(
+            'Unable to save app state:',
+            result.error
+          )
+        }
+      } catch (error) {
+        console.error(
+          'Unable to save app state:',
+          error
+        )
+      }
+    }
+
+  void persistAppState()
+}, [
+  currentProject,
+  recentProjects,
+  isAppStateLoaded
+])
+
+const navigation = [
+  'Home',
+  ...(currentProject
+    ? ['Dashboard']
+    : []),
+  'AI',
+  'Code Editor',
+  'AI + Code',
+  'Pin Manager',
+  'Monitor',
+  'Terminal',
+  'Git',
+  'Activity',
+  'User Guide',
+  'Settings'
+]
 
 const handleOpenProject =
   async (): Promise<void> => {
@@ -110,7 +198,7 @@ const handleOpenProject =
       }
     )
 
-    setActivePage('Home')
+    setActivePage('Dashboard')
   }
 
 
@@ -178,6 +266,7 @@ const handleOpenProject =
       }
 
       setCurrentProject(newProject)
+      setActivePage('Dashboard')
 
       setRecentProjects((projects) => {
         const filteredProjects = projects.filter(
@@ -301,8 +390,6 @@ const handleOpenProject =
 
   {activePage === 'Home' && (
     <>
-      {!currentProject && (
-        <>
           <div className="welcome">
             <h2>Добро пожаловать</h2>
 
@@ -341,10 +428,71 @@ const handleOpenProject =
               </span>
             </button>
           </div>
-        </>
-      )}
 
-      {currentProject && (
+
+      
+
+      <section className="recent-section">
+        <div className="section-heading">
+          <div>
+            <h3>Recent Projects</h3>
+
+            <p>
+              Недавно открытые проекты.
+            </p>
+          </div>
+        </div>
+
+        {recentProjects.length === 0 ? (
+          <div className="empty-projects">
+            <div className="empty-icon">
+              {'{ }'}
+            </div>
+
+            <h4>
+              Проектов пока нет
+            </h4>
+
+            <p>
+              Создай первый проект или открой уже существующий
+              ESP-IDF проект.
+            </p>
+          </div>
+        ) : (
+          <div className="recent-project-list">
+            {recentProjects.map((project) => (
+              <button
+                key={project.path}
+                type="button"
+                className="recent-project-card"
+                onClick={() => {
+                  setCurrentProject(project)
+                  setActivePage('Dashboard')
+                }}
+              >
+                <div>
+                  <strong>
+                    {project.name}
+                  </strong>
+
+                  <span>
+                    {project.path}
+                  </span>
+                </div>
+
+                <small>
+                  {formatBoard(project.board)}
+                </small>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+    </>
+  )}
+
+{activePage === 'Dashboard' &&
+  currentProject && (
         <section className="project-dashboard">
           <div className="dashboard-heading">
             <div>
@@ -425,65 +573,6 @@ const handleOpenProject =
           </div>
         </section>
       )}
-
-      <section className="recent-section">
-        <div className="section-heading">
-          <div>
-            <h3>Recent Projects</h3>
-
-            <p>
-              Недавно открытые проекты.
-            </p>
-          </div>
-        </div>
-
-        {recentProjects.length === 0 ? (
-          <div className="empty-projects">
-            <div className="empty-icon">
-              {'{ }'}
-            </div>
-
-            <h4>
-              Проектов пока нет
-            </h4>
-
-            <p>
-              Создай первый проект или открой уже существующий
-              ESP-IDF проект.
-            </p>
-          </div>
-        ) : (
-          <div className="recent-project-list">
-            {recentProjects.map((project) => (
-              <button
-                key={project.path}
-                type="button"
-                className="recent-project-card"
-                onClick={() => {
-                  setCurrentProject(project)
-                  setActivePage('Home')
-                }}
-              >
-                <div>
-                  <strong>
-                    {project.name}
-                  </strong>
-
-                  <span>
-                    {project.path}
-                  </span>
-                </div>
-
-                <small>
-                  {formatBoard(project.board)}
-                </small>
-              </button>
-            ))}
-          </div>
-        )}
-      </section>
-    </>
-  )}
 
 <div
   className={`code-editor-keep-alive ${

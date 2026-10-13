@@ -753,7 +753,14 @@ const handleCloseFile = (
               activeFile && (
                 <Editor
                   path={
-                    activeFile.relativePath
+                    projectPath
+                      ? `espai://project/${encodeURIComponent(
+                          projectPath
+                        )}/${activeFile.relativePath.replace(
+                          /\\/g,
+                          '/'
+                        )}`
+                      : activeFile.relativePath
                   }
                   height="100%"
 		  onMount={(editor) => {
