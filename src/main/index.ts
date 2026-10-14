@@ -7,7 +7,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { parseEditorSessions, type EditorSessions } from '../shared/editorSession'
 import { registerEnvironmentHandlers } from './environmentIpc'
-import { registerBuildHandlers, isBuildRunning } from './projectBuild'
+import { registerBuildHandlers, isBuildRunning, stopMonitor } from './projectBuild'
 
 const execFileAsync = promisify(execFile)
 
@@ -191,6 +191,7 @@ function createWindow(): void {
     if (event.sender !== mainWindow.webContents) return
     if (isBuildRunning()) return
     closeAllowed = true
+    stopMonitor()
     mainWindow.close()
   }
   ipcMain.on('window:confirm-close', confirmClose)

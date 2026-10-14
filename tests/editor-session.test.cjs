@@ -382,7 +382,7 @@ function mainHost(fsApi = require('node:fs/promises'), userData = 'unused') {
     (name) => {
       if (name === './environmentIpc') return { registerEnvironmentHandlers() {} }
       if (name === './projectBuild')
-        return { registerBuildHandlers() {}, isBuildRunning: () => false }
+        return { registerBuildHandlers() {}, isBuildRunning: () => false, stopMonitor() {} }
       if (name === 'electron')
         return {
           app: {
@@ -465,6 +465,7 @@ test('App keeps drafts on switching and refuses to close after failed session pe
       if (name === 'react/jsx-runtime') return require(name)
       if (name.includes('CodeEditorPage')) return { default: Editor }
       if (name.includes('EnvironmentPage')) return { default: function EnvironmentPage() {} }
+      if (name.includes('MonitorPage')) return { default: function MonitorPage() {} }
       if (name.includes('BuildPanel'))
         return { default: function BuildPanel() {}, buildLabels: { idle: 'Не собирался' } }
       if (name.includes('ProjectUnavailableDialog'))

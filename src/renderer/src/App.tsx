@@ -3,6 +3,7 @@ import CodeEditorPage from './pages/CodeEditorPage'
 import ProjectUnavailableDialog from './components/ProjectUnavailableDialog'
 import RecentProjectMenu from './components/RecentProjectMenu'
 import EnvironmentPage from './pages/EnvironmentPage'
+import MonitorPage from './pages/MonitorPage'
 import BuildPanel from './components/BuildPanel'
 import { buildLabels, type BuildState } from '../../shared/build'
 import {
@@ -774,6 +775,9 @@ function App(): React.JSX.Element {
               key={currentProject?.path ?? 'no-project'}
               projectTarget={currentProject?.board}
             />
+          )}
+          {activePage === 'Monitor' && (
+            <MonitorPage target={currentProject?.board ?? ''} blocked={!!buildBusy} />
           )}
           <div className={`code-editor-keep-alive ${activePage === 'Code Editor' ? 'active' : ''}`}>
             <CodeEditorPage

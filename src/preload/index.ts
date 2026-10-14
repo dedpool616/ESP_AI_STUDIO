@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type { EnvironmentResult, CheckTarget } from '../shared/environment'
 import type { BuildState, BuildResult, PortsResult } from '../shared/build'
+import type { MonitorState } from '../shared/monitor'
 
 interface CreateProjectOptions {
   projectName: string
@@ -13,6 +14,15 @@ interface CreateProjectOptions {
 }
 
 const api = {
+  getMonitorState: (): Promise<MonitorState> => ipcRenderer.invoke('monitor:state'),
+  startMonitor: (
+    target: string,
+    port: string,
+    baud: number
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('monitor:start', target, port, baud),
+  stopMonitor: (): Promise<MonitorState> => ipcRenderer.invoke('monitor:stop'),
+  clearMonitor: (): Promise<MonitorState> => ipcRenderer.invoke('monitor:clear'),
   listPorts: (target: string): Promise<PortsResult> => ipcRenderer.invoke('serial:ports', target),
   startFlash: (path: string, target: string, port: string): Promise<BuildResult> =>
     ipcRenderer.invoke('flash:start', path, target, port),

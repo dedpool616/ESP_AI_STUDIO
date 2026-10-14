@@ -7,6 +7,45 @@ import { checkEnvironment } from './environment'
 import { createCheckEnvironment } from './environmentReadiness'
 import { isCheckTarget, type EnvironmentReport, type CheckTarget } from '../shared/environment'
 import type { BuildState, BuildResult, PortsResult } from '../shared/build'
+import { monitorBaudRates, type MonitorState } from '../shared/monitor'
+import type { ChildProcessWithoutNullStreams } from 'child_process'
+
+let monitor: MonitorState = { status: 'disconnected', port: '', baud: 115200, log: '' }
+let monitorChild: ChildProcessWithoutNullStreams | undefined
+let monitorGeneration = 0
+export function stopMonitor(): void {
+  monitorGeneration++
+  monitorChild?.kill()
+  monitorChild = undefined
+  monitor.status = 'disconnected'
+}
+
+const monitorScript = `
+import sys, json, codecs
+import serial
+def emit(value):
+    print(json.dumps(value), flush=True)
+try:
+    connection = serial.Serial()
+    connection.port = sys.argv[1]
+    connection.baudrate = int(sys.argv[2])
+    connection.timeout = 0.2
+    connection.dtr = False
+    connection.rts = False
+    connection.open()
+    emit({"ready": True})
+    decoder = codecs.getincrementaldecoder('utf-8')(errors='replace')
+    while True:
+        data = connection.read(min(connection.in_waiting or 1, 4096))
+        if data:
+            emit({"data": decoder.decode(data)})
+except Exception as error:
+    emit({"error": str(error)})
+    sys.exit(1)
+finally:
+    if 'connection' in locals() and connection.is_open:
+        connection.close()
+`
 
 let state: BuildState = { status: 'idle', projectPath: '', target: '', log: '' }
 export function isBuildRunning(): boolean {
@@ -172,6 +211,98 @@ export function registerBuildHandlers(ipc: Pick<IpcMain, 'handle'>, userDataPath
       }
     }
   }
+  ipc.handle('monitor:state', () => ({ ...monitor }))
+  ipc.handle('monitor:clear', () => {
+    monitor.log = ''
+    return { ...monitor }
+  })
+  ipc.handle('monitor:stop', () => {
+    stopMonitor()
+    return { ...monitor }
+  })
+  ipc.handle('monitor:start', async (_, target: unknown, port: unknown, baud: unknown) => {
+    if (isBuildRunning() || monitor.status === 'connecting' || monitorChild)
+      return { success: false, error: 'Дождитесь завершения операции или отключите монитор.' }
+    if (
+      !isCheckTarget(target) ||
+      typeof port !== 'string' ||
+      !/^COM[1-9]\d*$/i.test(port) ||
+      typeof baud !== 'number' ||
+      !monitorBaudRates.includes(baud)
+    )
+      return { success: false, error: 'Выберите плату, COM-порт и поддерживаемую скорость.' }
+    const generation = ++monitorGeneration
+    monitor = { status: 'connecting', port, baud, log: monitor.log }
+    try {
+      const report = await environment(target)
+      const env = await prepareBuildEnvironment(report, target)
+      if (generation !== monitorGeneration)
+        return { success: false, error: 'Подключение отменено.' }
+      const child = spawn(
+        report.tools.find((tool) => tool.name === 'python')!.path!,
+        ['-B', '-u', '-c', monitorScript, port, String(baud)],
+        { env, windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'pipe'] }
+      )
+      monitorChild = child
+      const decoder = new StringDecoder('utf8')
+      let pending = ''
+      child.stdout.on('data', (chunk: Buffer) => {
+        if (generation !== monitorGeneration) return
+        pending += decoder.write(chunk)
+        if (pending.length > 65536) {
+          monitor.error = 'Некорректный вывод процесса монитора.'
+          stopMonitor()
+          monitor.status = 'error'
+          return
+        }
+        let newline: number
+        while ((newline = pending.indexOf('\n')) >= 0) {
+          const line = pending.slice(0, newline)
+          pending = pending.slice(newline + 1)
+          try {
+            const message = JSON.parse(line)
+            if (message.ready) monitor.status = 'connected'
+            if (typeof message.data === 'string')
+              monitor.log = (monitor.log + message.data).slice(-256 * 1024)
+            if (typeof message.error === 'string') {
+              monitor.status = 'error'
+              monitor.error = message.error
+            }
+          } catch {
+            /* Ignore non-protocol output. */
+          }
+        }
+      })
+      child.stderr.on('data', (chunk: Buffer) => {
+        if (generation === monitorGeneration) monitor.error = chunk.toString('utf8').slice(-4000)
+      })
+      child.on('error', (error) => {
+        if (generation === monitorGeneration) {
+          monitor.status = 'error'
+          monitor.error = error.message
+          monitorChild = undefined
+        }
+      })
+      child.on('close', () => {
+        if (generation !== monitorGeneration) return
+        monitorChild = undefined
+        if (monitor.status !== 'error') {
+          monitor.status = 'error'
+          monitor.error = 'Соединение с устройством закрыто.'
+        }
+      })
+      return { success: true }
+    } catch (error) {
+      if (generation === monitorGeneration) {
+        monitor.status = 'error'
+        monitor.error = error instanceof Error ? error.message : 'Ошибка подключения.'
+      }
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Ошибка подключения.'
+      }
+    }
+  })
   ipc.handle('serial:ports', (_, target: unknown): Promise<PortsResult> =>
     isCheckTarget(target)
       ? ports(target)
@@ -190,6 +321,12 @@ export function registerBuildHandlers(ipc: Pick<IpcMain, 'handle'>, userDataPath
   ): BuildResult => {
     if (isBuildRunning())
       return { success: false, error: 'Сборка уже выполняется.', state: { ...state } }
+    if (operation === 'flash' && (monitorChild || monitor.status === 'connecting'))
+      return {
+        success: false,
+        error: 'Отключите Serial Monitor перед прошивкой, чтобы освободить COM-порт.',
+        state: { ...state }
+      }
     if (typeof projectPath !== 'string' || !isAbsolute(projectPath) || !isCheckTarget(target))
       return {
         success: false,

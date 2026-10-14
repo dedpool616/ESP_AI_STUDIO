@@ -51,6 +51,7 @@ function fixture() {
         return { createCheckEnvironment: () => ({ PATH: 'selected-tools' }) }
       if (name.includes('shared/environment'))
         return { isCheckTarget: (value) => ['esp32s3', 'esp32c3'].includes(value) }
+      if (name.includes('shared/monitor')) return { monitorBaudRates: [115200, 9600] }
       if (name === 'child_process')
         return {
           execFile(executable, args, options, callback) {
@@ -63,6 +64,7 @@ function fixture() {
             child = new EventEmitter()
             child.stdout = new EventEmitter()
             child.stderr = new EventEmitter()
+            child.kill = () => child.emit('close', null)
             return child
           }
         }
@@ -78,6 +80,10 @@ function fixture() {
     calls,
     report,
     api: module.exports,
+    monitorStart: (baud = 115200) => handlers.get('monitor:start')({}, 'esp32s3', 'COM3', baud),
+    monitorState: () => handlers.get('monitor:state')(),
+    monitorStop: () => handlers.get('monitor:stop')(),
+    monitorClear: () => handlers.get('monitor:clear')(),
     ports: () => handlers.get('serial:ports')({}, 'esp32s3'),
     flash: (port = 'COM3') => handlers.get('flash:start')({}, 'C:\\project', 'esp32s3', port),
     start: (project = 'C:\\project', target = 'esp32s3') =>
@@ -87,6 +93,41 @@ function fixture() {
   }
 }
 const settle = () => new Promise((resolve) => setImmediate(resolve))
+
+test('monitor validates baud, streams protocol, blocks flash, clears output and disconnects', async () => {
+  const f = fixture()
+  assert.equal((await f.monitorStart(1)).success, false)
+  assert.equal((await f.monitorStart()).success, true)
+  f.child().stdout.emit('data', Buffer.from('{"ready":true}\n{"data":"Hello ESP"}\n'))
+  assert.equal(f.monitorState().status, 'connected')
+  assert.equal(f.monitorState().log, 'Hello ESP')
+  assert.equal(f.flash().success, false)
+  f.monitorClear()
+  assert.equal(f.monitorState().log, '')
+  f.monitorStop()
+  assert.equal(f.monitorState().status, 'disconnected')
+})
+
+test('monitor reports device failure and ignores output from disconnected process', async () => {
+  const f = fixture()
+  await f.monitorStart()
+  const previous = f.child()
+  previous.stdout.emit('data', Buffer.from('{"error":"device removed"}\n'))
+  previous.emit('close', 1)
+  assert.equal(f.monitorState().status, 'error')
+  assert.equal(f.monitorState().error, 'device removed')
+  f.monitorStop()
+  previous.stdout.emit('data', Buffer.from('{"ready":true}\n'))
+  assert.equal(f.monitorState().status, 'disconnected')
+})
+
+test('disconnect during preparation cancels connection before spawning Python', async () => {
+  const f = fixture()
+  const pending = f.monitorStart()
+  f.monitorStop()
+  assert.equal((await pending).success, false)
+  assert.equal(f.calls.length, 0)
+})
 
 test('port discovery is read-only and flashing requires valid port and matching build', async () => {
   const f = fixture()
