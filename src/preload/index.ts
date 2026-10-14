@@ -24,8 +24,8 @@ const api = {
   stopMonitor: (): Promise<MonitorState> => ipcRenderer.invoke('monitor:stop'),
   clearMonitor: (): Promise<MonitorState> => ipcRenderer.invoke('monitor:clear'),
   listPorts: (target: string): Promise<PortsResult> => ipcRenderer.invoke('serial:ports', target),
-  startFlash: (path: string, target: string, port: string): Promise<BuildResult> =>
-    ipcRenderer.invoke('flash:start', path, target, port),
+  startFlash: (path: string, target: string, port: string, baud = 460800): Promise<BuildResult> =>
+    ipcRenderer.invoke('flash:start', path, target, port, baud),
   getBuildState: (): Promise<BuildState> => ipcRenderer.invoke('build:state'),
   startBuild: (path: string, target: string): Promise<BuildResult> =>
     ipcRenderer.invoke('build:start', path, target),

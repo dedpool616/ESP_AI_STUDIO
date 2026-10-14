@@ -1,5 +1,11 @@
 import { useState } from 'react'
-import { buildLabels, type BuildState, type SerialPortInfo } from '../../../shared/build'
+import {
+  buildLabels,
+  flashBaudRates,
+  type BuildState,
+  type SerialPortInfo
+} from '../../../shared/build'
+import { parseBuildDiagnostics, type BuildDiagnostic } from '../../../shared/buildDiagnostics'
 
 export default function BuildPanel({
   state,
@@ -7,20 +13,24 @@ export default function BuildPanel({
   onFlash,
   target,
   blocked,
-  dirty
+  dirty,
+  onDiagnostic
 }: {
   state: BuildState | null
   onBuild: () => void
-  onFlash: (port: string) => void
+  onFlash: (port: string, baud: number) => void
   target: string
   blocked: boolean
   dirty: boolean
+  onDiagnostic: (diagnostic: BuildDiagnostic) => void
 }): React.JSX.Element {
   const [ports, setPorts] = useState<SerialPortInfo[]>([])
   const [port, setPort] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [confirm, setConfirm] = useState(false)
+  const [flashBaud, setFlashBaud] = useState(460800)
+  const diagnostics = parseBuildDiagnostics(state?.log ?? '', state?.projectPath ?? '')
   const refresh = async (): Promise<void> => {
     if (loading) return
     setLoading(true)
@@ -101,6 +111,28 @@ export default function BuildPanel({
           </p>
         )}
         {error && <p role="alert">{error}</p>}
+        <label>
+          Скорость прошивки
+          <select
+            aria-label="Скорость прошивки"
+            value={flashBaud}
+            disabled={blocked || loading}
+            onChange={(event) => {
+              setFlashBaud(Number(event.target.value))
+              setConfirm(false)
+            }}
+          >
+            {flashBaudRates.map((baud) => (
+              <option key={baud} value={baud}>
+                {baud} бод
+              </option>
+            ))}
+          </select>
+        </label>
+        <p>
+          Если прошивка обрывается, попробуйте 115200 бод. Скорость Serial Monitor задаётся
+          отдельно.
+        </p>
         <button
           type="button"
           className="build-project-button"
@@ -112,8 +144,9 @@ export default function BuildPanel({
         {confirm && (
           <div className="flash-confirm">
             <p>
-              Записать прошивку этого проекта на {port} ({target.toUpperCase()})? Существующая
-              программа на плате будет заменена. ESP-IDF сначала обновит сборку при необходимости.
+              Записать прошивку этого проекта на {port} ({target.toUpperCase()}), {flashBaud} бод?
+              Существующая программа на плате будет заменена. ESP-IDF сначала обновит сборку при
+              необходимости.
             </p>
             <button type="button" onClick={() => setConfirm(false)}>
               Отмена
@@ -123,7 +156,7 @@ export default function BuildPanel({
               disabled={blocked || dirty || loading || !port}
               onClick={() => {
                 setConfirm(false)
-                onFlash(port)
+                onFlash(port, flashBaud)
               }}
             >
               Подтвердить прошивку
@@ -132,6 +165,37 @@ export default function BuildPanel({
         )}
       </div>
       {state?.error && <p role="alert">{state.error}</p>}
+      <section aria-label="Ошибки и предупреждения сборки" className="build-diagnostics">
+        <h3>Ошибки и предупреждения ({diagnostics.length})</h3>
+        {diagnostics.length === 0 && (
+          <p>
+            Сообщений компилятора с указанием файла и строки пока нет. Полный вывод — в журнале
+            ниже.
+          </p>
+        )}
+        {diagnostics.map((item, index) => (
+          <div key={index} className="build-diagnostic">
+            <strong>{item.severity === 'error' ? 'Ошибка' : 'Предупреждение'}: </strong>
+            <button
+              type="button"
+              disabled={!item.relativePath || blocked}
+              onClick={() => onDiagnostic(item)}
+              title={
+                item.relativePath
+                  ? 'Открыть в редакторе'
+                  : 'Файл вне проекта — доступен только в журнале'
+              }
+            >
+              {item.relativePath ?? item.file}:{item.line}:{item.column}
+            </button>
+            <span>{item.message}</span>
+          </div>
+        ))}
+        <small>
+          До 500 сообщений из последних 256 КБ журнала. Переход доступен для файлов проекта после
+          завершения операции.
+        </small>
+      </section>
       <pre className="build-log" tabIndex={0} aria-label="Журнал сборки">
         {state?.log || 'Журнал появится после запуска сборки.'}
       </pre>

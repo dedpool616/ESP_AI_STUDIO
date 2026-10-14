@@ -7,6 +7,7 @@ import { checkEnvironment } from './environment'
 import { createCheckEnvironment } from './environmentReadiness'
 import { isCheckTarget, type EnvironmentReport, type CheckTarget } from '../shared/environment'
 import type { BuildState, BuildResult, PortsResult } from '../shared/build'
+import { flashBaudRates } from '../shared/build'
 import { monitorBaudRates, type MonitorState } from '../shared/monitor'
 import type { ChildProcessWithoutNullStreams } from 'child_process'
 
@@ -317,7 +318,8 @@ export function registerBuildHandlers(ipc: Pick<IpcMain, 'handle'>, userDataPath
     projectPath: unknown,
     target: unknown,
     operation: 'build' | 'flash',
-    port?: unknown
+    port?: unknown,
+    baud: unknown = 460800
   ): BuildResult => {
     if (isBuildRunning())
       return { success: false, error: 'Сборка уже выполняется.', state: { ...state } }
@@ -335,7 +337,14 @@ export function registerBuildHandlers(ipc: Pick<IpcMain, 'handle'>, userDataPath
       }
     if (operation === 'flash' && (typeof port !== 'string' || !/^COM[1-9]\d*$/i.test(port)))
       return { success: false, error: 'Выберите COM-порт.', state: { ...state } }
+    if (operation === 'flash' && (typeof baud !== 'number' || !flashBaudRates.includes(baud)))
+      return {
+        success: false,
+        error: 'Выберите поддерживаемую скорость прошивки.',
+        state: { ...state }
+      }
     state = {
+      ...(operation === 'flash' ? { baud: baud as number } : {}),
       operation,
       port: typeof port === 'string' ? port : undefined,
       status: 'running',
@@ -375,7 +384,9 @@ export function registerBuildHandlers(ipc: Pick<IpcMain, 'handle'>, userDataPath
           `ESP-IDF ${report.idf.version}; плата ${target}\nПроект: ${projectPath}\nСборка файлов с диска. Внешние компоненты отключены.\n`
         )
         if (operation === 'flash')
-          append(`Прошивка через ${port}. Существующая программа на плате будет заменена.\n`)
+          append(
+            `Прошивка через ${port}, ${baud} бод. Существующая программа на плате будет заменена.\n`
+          )
         await new Promise<void>((resolve, reject) => {
           const child = spawn(
             python,
@@ -386,7 +397,9 @@ export function registerBuildHandlers(ipc: Pick<IpcMain, 'handle'>, userDataPath
               projectPath,
               '-D',
               `IDF_TARGET=${target}`,
-              ...(operation === 'flash' ? ['-p', String(port), '-b', '460800', 'flash'] : ['build'])
+              ...(operation === 'flash'
+                ? ['-p', String(port), '-b', String(baud), 'flash']
+                : ['build'])
             ],
             {
               cwd: projectPath,
@@ -426,7 +439,9 @@ export function registerBuildHandlers(ipc: Pick<IpcMain, 'handle'>, userDataPath
   ipc.handle('build:start', (_, projectPath: unknown, target: unknown) =>
     start(projectPath, target, 'build')
   )
-  ipc.handle('flash:start', (_, projectPath: unknown, target: unknown, port: unknown) =>
-    start(projectPath, target, 'flash', port)
+  ipc.handle(
+    'flash:start',
+    (_, projectPath: unknown, target: unknown, port: unknown, baud: unknown = 460800) =>
+      start(projectPath, target, 'flash', port, baud)
   )
 }

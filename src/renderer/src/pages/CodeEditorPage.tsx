@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
+import type { EditorLocation } from '../../../shared/buildDiagnostics'
 import {
   emptyEditorSession,
   markFileSaved,
@@ -51,6 +52,7 @@ interface ProjectTreeNode {
 }
 
 interface CodeEditorPageProps {
+  locationRequest?: EditorLocation | null
   projectName?: string
   projectPath?: string
   isActive?: boolean
@@ -143,6 +145,7 @@ function TreeNode({ node, activeFilePath, onOpenFile }: TreeNodeProps): React.JS
 }
 
 function CodeEditorPage({
+  locationRequest,
   projectName,
   projectPath,
   isActive = true,
@@ -152,6 +155,7 @@ function CodeEditorPage({
   blocked
 }: CodeEditorPageProps): React.JSX.Element {
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
+  const appliedLocation = useRef<number | null>(null)
 
   const [tree, setTree] = useState<ProjectTreeNode[]>([])
 
@@ -204,6 +208,32 @@ function CodeEditorPage({
   const [pendingClosePath, setPendingClosePath] = useState<string | null>(null)
 
   const activeFile = openFiles.find((file) => file.relativePath === activeFilePath) ?? null
+  const revealLocation = useCallback((): void => {
+    const editor = editorRef.current
+    if (
+      !editor ||
+      !locationRequest ||
+      !isActive ||
+      appliedLocation.current === locationRequest.id ||
+      locationRequest.projectPath !== projectPath ||
+      locationRequest.relativePath !== activeFilePath
+    )
+      return
+    const position = editor
+      .getModel()
+      ?.validatePosition({ lineNumber: locationRequest.line, column: locationRequest.column })
+    if (!position) return
+    editor.setPosition(position)
+    editor.revealPositionInCenter(position)
+    editor.focus()
+    appliedLocation.current = locationRequest.id
+  }, [locationRequest, isActive, projectPath, activeFilePath])
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      revealLocation()
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [revealLocation])
 
   const dirty = activeFile ? activeFile.content !== activeFile.savedContent : false
   useEffect(() => {
@@ -598,6 +628,7 @@ function CodeEditorPage({
                     window.setTimeout(() => {
                       editor.layout()
                       editor.focus()
+                      revealLocation()
                     }, 0)
                   }
                 }}

@@ -6,6 +6,7 @@ import EnvironmentPage from './pages/EnvironmentPage'
 import MonitorPage from './pages/MonitorPage'
 import BuildPanel from './components/BuildPanel'
 import { buildLabels, type BuildState } from '../../shared/build'
+import type { BuildDiagnostic, EditorLocation } from '../../shared/buildDiagnostics'
 import {
   emptyEditorSession,
   hasUnsavedChanges,
@@ -53,6 +54,8 @@ function App(): React.JSX.Element {
   const [editorSessions, setEditorSessions] = useState<EditorSessions>({})
   const [editorSaving, setEditorSaving] = useState(false)
   const [buildState, setBuildState] = useState<BuildState | null>(null)
+  const [editorLocation, setEditorLocation] = useState<EditorLocation | null>(null)
+  const diagnosticRequest = useRef(0)
   const [buildStarting, setBuildStarting] = useState(false)
   const buildStartingRef = useRef(false)
   const buildBusy = buildStarting || buildState?.status === 'running'
@@ -79,7 +82,7 @@ function App(): React.JSX.Element {
     }
   }, [])
 
-  const startBuild = async (port?: string): Promise<void> => {
+  const startBuild = async (port?: string, baud = 460800): Promise<void> => {
     if (
       !currentProject ||
       buildBusy ||
@@ -93,7 +96,7 @@ function App(): React.JSX.Element {
     setProjectError('')
     try {
       const result = port
-        ? await window.api.startFlash(currentProject.path, currentProject.board, port)
+        ? await window.api.startFlash(currentProject.path, currentProject.board, port, baud)
         : await window.api.startBuild(currentProject.path, currentProject.board)
       setBuildState(result.state)
       if (!result.success) setProjectError(result.error ?? 'Не удалось начать сборку.')
@@ -102,6 +105,55 @@ function App(): React.JSX.Element {
     } finally {
       buildStartingRef.current = false
       setBuildStarting(false)
+    }
+  }
+  const openDiagnostic = async (diagnostic: BuildDiagnostic): Promise<void> => {
+    if (!currentProject || !diagnostic.relativePath || buildBusy || editorSaving) return
+    const project = currentProject.path
+    const request = ++diagnosticRequest.current
+    const relativePath = diagnostic.relativePath
+    try {
+      const existing = snapshotRef.current.editorSessions[project]?.openFiles.some(
+        (file) => file.relativePath === relativePath
+      )
+      const result = existing ? null : await window.api.readProjectFile(project, relativePath)
+      if (
+        snapshotRef.current.currentProject?.path !== project ||
+        request !== diagnosticRequest.current
+      )
+        return
+      if (result && !result.success) throw new Error(result.error ?? 'Не удалось открыть файл.')
+      setEditorSessions((sessions) => {
+        const session = sessions[project] ?? emptyEditorSession
+        return {
+          ...sessions,
+          [project]: {
+            ...session,
+            activeFilePath: relativePath,
+            openFiles: session.openFiles.some((file) => file.relativePath === relativePath)
+              ? session.openFiles
+              : [
+                  ...session.openFiles,
+                  {
+                    name: relativePath.split('/').at(-1)!,
+                    relativePath,
+                    content: result?.content ?? '',
+                    savedContent: result?.content ?? ''
+                  }
+                ]
+          }
+        }
+      })
+      setEditorLocation({
+        id: request,
+        projectPath: project,
+        relativePath,
+        line: diagnostic.line,
+        column: diagnostic.column
+      })
+      setActivePage('Code Editor')
+    } catch (error) {
+      setProjectError(error instanceof Error ? error.message : 'Ошибка открытия файла.')
     }
   }
   const [pendingProject, setPendingProject] = useState<ProjectInfo | null>(null)
@@ -752,10 +804,13 @@ function App(): React.JSX.Element {
               </div>
               <div id="project-build">
                 <BuildPanel
+                  onDiagnostic={(diagnostic) => {
+                    void openDiagnostic(diagnostic)
+                  }}
                   key={currentProject.path}
                   target={currentProject.board}
-                  onFlash={(port) => {
-                    void startBuild(port)
+                  onFlash={(port, baud) => {
+                    void startBuild(port, baud)
                   }}
                   state={buildState?.projectPath === currentProject.path ? buildState : null}
                   onBuild={() => {
@@ -781,6 +836,7 @@ function App(): React.JSX.Element {
           )}
           <div className={`code-editor-keep-alive ${activePage === 'Code Editor' ? 'active' : ''}`}>
             <CodeEditorPage
+              locationRequest={editorLocation}
               blocked={
                 (!!buildBusy && buildState?.projectPath === currentProject?.path) ||
                 closeRequested ||

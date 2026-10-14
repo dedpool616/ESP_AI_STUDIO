@@ -1303,3 +1303,27 @@ button {
   color: #d7e0eb;
   user-select: text;
 }
+.build-diagnostics {
+  margin-top: 20px;
+  max-height: 280px;
+  overflow: auto;
+}
+
+.build-diagnostic {
+  padding: 8px 0;
+  overflow-wrap: anywhere;
+}
+
+.build-diagnostic button {
+  color: #79bbff;
+  background: transparent;
+  border: 0;
+  text-decoration: underline;
+  cursor: pointer;
+  margin-right: 8px;
+}
+
+.build-diagnostic button:disabled {
+  color: #aaa;
+  cursor: default;
+}

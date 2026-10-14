@@ -52,6 +52,7 @@ function fixture() {
       if (name.includes('shared/environment'))
         return { isCheckTarget: (value) => ['esp32s3', 'esp32c3'].includes(value) }
       if (name.includes('shared/monitor')) return { monitorBaudRates: [115200, 9600] }
+      if (name.includes('shared/build')) return { flashBaudRates: [115200, 230400, 460800, 921600] }
       if (name === 'child_process')
         return {
           execFile(executable, args, options, callback) {
@@ -85,7 +86,8 @@ function fixture() {
     monitorStop: () => handlers.get('monitor:stop')(),
     monitorClear: () => handlers.get('monitor:clear')(),
     ports: () => handlers.get('serial:ports')({}, 'esp32s3'),
-    flash: (port = 'COM3') => handlers.get('flash:start')({}, 'C:\\project', 'esp32s3', port),
+    flash: (port = 'COM3', baud) =>
+      handlers.get('flash:start')({}, 'C:\\project', 'esp32s3', port, baud),
     start: (project = 'C:\\project', target = 'esp32s3') =>
       handlers.get('build:start')({}, project, target),
     state: () => handlers.get('build:state')(),
@@ -93,6 +95,23 @@ function fixture() {
   }
 }
 const settle = () => new Promise((resolve) => setImmediate(resolve))
+
+test('flash validates baud and passes selected speed to idf.py', async () => {
+  const f = fixture()
+  for (const baud of [0, -1, '115200', 100000, null])
+    assert.equal(f.flash('COM3', baud).success, false)
+  assert.equal(f.calls.length, 0)
+  f.files.set(
+    'C:\\project\\build\\project_description.json',
+    JSON.stringify({ target: 'esp32s3', project_path: 'C:/project' })
+  )
+  f.flash('COM3', 115200)
+  await settle()
+  const args = f.calls[0].args
+  assert.equal(args[args.indexOf('-b') + 1], '115200')
+  assert.equal(f.state().baud, 115200)
+  assert.match(f.state().log, /115200 бод/)
+})
 
 test('monitor validates baud, streams protocol, blocks flash, clears output and disconnects', async () => {
   const f = fixture()

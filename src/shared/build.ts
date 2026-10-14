@@ -1,4 +1,7 @@
+export const flashBaudRates = [115200, 230400, 460800, 921600]
+
 export interface BuildState {
+  baud?: number
   operation?: 'build' | 'flash'
   port?: string
   status: 'idle' | 'running' | 'success' | 'error'

@@ -87,7 +87,7 @@ interface ESPAIStudioAPI {
   stopMonitor: () => Promise<MonitorState>
   clearMonitor: () => Promise<MonitorState>
   listPorts: (target: string) => Promise<PortsResult>
-  startFlash: (path: string, target: string, port: string) => Promise<BuildResult>
+  startFlash: (path: string, target: string, port: string, baud?: number) => Promise<BuildResult>
   getBuildState: () => Promise<BuildState>
   startBuild: (path: string, target: string) => Promise<BuildResult>
   checkEnvironment: (target?: CheckTarget) => Promise<EnvironmentResult>
