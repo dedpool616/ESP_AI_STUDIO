@@ -1,16 +1,74 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { EnvironmentReport, EnvironmentResult } from '../../../shared/environment'
+import {
+  checkTargets,
+  isCheckTarget,
+  type CheckTarget,
+  type DependencyCheck
+} from '../../../shared/environment'
 
 // React StrictMode can mount twice. Share only the in-flight read-only check.
-let pendingCheck: Promise<EnvironmentResult> | null = null
-function readEnvironment(): Promise<EnvironmentResult> {
-  pendingCheck ??= window.api.checkEnvironment().finally(() => {
-    pendingCheck = null
-  })
-  return pendingCheck
+const pendingChecks = new Map<CheckTarget, Promise<EnvironmentResult>>()
+function readEnvironment(target: CheckTarget): Promise<EnvironmentResult> {
+  let pending = pendingChecks.get(target)
+  if (!pending) {
+    pending = window.api.checkEnvironment(target).finally(() => {
+      pendingChecks.delete(target)
+    })
+    pendingChecks.set(target, pending)
+  }
+  return pending
 }
 
-export default function EnvironmentPage(): React.JSX.Element {
+const targetNames: Record<CheckTarget, string> = {
+  esp32: 'ESP32',
+  esp32s2: 'ESP32-S2',
+  esp32s3: 'ESP32-S3',
+  esp32c3: 'ESP32-C3',
+  esp32c6: 'ESP32-C6'
+}
+
+function DependencyCard({
+  title,
+  check
+}: {
+  title: string
+  check: DependencyCheck
+}): React.JSX.Element {
+  const labels = {
+    passed: 'Пройдена',
+    partial: 'Частично',
+    missing: 'Не найдено',
+    error: 'Ошибка',
+    skipped: 'Не проверено'
+  }
+  return (
+    <div className="environment-card">
+      <h3>
+        {title}
+        <span
+          className={`environment-badge ${check.status === 'passed' ? 'found' : check.status === 'error' ? 'error' : 'missing'}`}
+        >
+          {labels[check.status]}
+        </span>
+      </h3>
+      <p>{check.detail}</p>
+      {check.version && <p>Версия: {check.version}</p>}
+      {check.path && <p className="environment-path">{check.path}</p>}
+      {!!check.expectedVersions?.length && (
+        <p>Поддерживаемые версии SDK: {check.expectedVersions.join(', ')}</p>
+      )}
+      {check.diagnostics && <pre className="environment-diagnostics">{check.diagnostics}</pre>}
+    </div>
+  )
+}
+
+export default function EnvironmentPage({
+  projectTarget
+}: { projectTarget?: string } = {}): React.JSX.Element {
+  const [target, setTarget] = useState<CheckTarget>(
+    isCheckTarget(projectTarget) ? projectTarget : 'esp32s3'
+  )
   const [report, setReport] = useState<EnvironmentReport | null>(null)
   const [busy, setBusy] = useState(true)
   const [error, setError] = useState('')
@@ -43,7 +101,7 @@ export default function EnvironmentPage(): React.JSX.Element {
     let canceled = false
     const request = ++generation.current
     busyRef.current = true
-    void readEnvironment()
+    void readEnvironment(target)
       .then(
         (result) => {
           if (canceled) return
@@ -66,18 +124,42 @@ export default function EnvironmentPage(): React.JSX.Element {
       generation.current = request + 1
       busyRef.current = false
     }
-  }, [])
+  }, [target])
 
   return (
     <section className="environment-page">
       <h2>ESP-IDF Manager</h2>
       <p>Проверка установленного ESP-IDF и инструментов разработки.</p>
+      <label className="form-field environment-selection">
+        <span>Плата для проверки</span>
+        <select
+          disabled={busy}
+          value={target}
+          onChange={(event) => {
+            if (isCheckTarget(event.target.value)) {
+              setBusy(true)
+              setError('')
+              setTarget(event.target.value)
+            }
+          }}
+        >
+          {checkTargets.map((value) => (
+            <option key={value} value={value}>
+              {targetNames[value]}
+            </option>
+          ))}
+        </select>
+        <small>
+          Плата берётся из проекта, если выбрана; иначе используется ESP32-S3. Этот выбор относится
+          к проверке окружения.
+        </small>
+      </label>
       <div className="environment-actions">
         <button
           type="button"
           disabled={busy}
           onClick={() => {
-            void run(readEnvironment)
+            void run(() => readEnvironment(target))
           }}
         >
           {busy ? 'Проверка…' : 'Проверить окружение'}
@@ -86,7 +168,7 @@ export default function EnvironmentPage(): React.JSX.Element {
           type="button"
           disabled={busy}
           onClick={() => {
-            void run(() => window.api.chooseIdf())
+            void run(() => window.api.chooseIdf(target))
           }}
         >
           Указать папку ESP-IDF
@@ -100,16 +182,20 @@ export default function EnvironmentPage(): React.JSX.Element {
       )}
       {report && (
         <>
-          <div className={`environment-summary ${report.basicToolsAvailable ? 'available' : ''}`}>
+          <div
+            className={`environment-summary ${report.readiness?.target === target && report.readiness.dependenciesPassed ? 'available' : ''}`}
+          >
             <strong>
-              {report.basicToolsAvailable
-                ? 'Базовые компоненты найдены'
-                : 'Окружение требует внимания'}
+              {report.readiness?.target === target && report.readiness.dependenciesPassed
+                ? 'Проверенные зависимости готовы'
+                : report.basicToolsAvailable
+                  ? 'Базовые компоненты найдены'
+                  : 'Окружение требует внимания'}
             </strong>
             <p>
-              Проверена доступность инструментов. Полная готовность к сборке ещё не подтверждена:
-              совместимость версий, Python-пакеты и компилятор ESP32 будут проверяться следующим
-              этапом.
+              Проверяются основные Python-пакеты, компилятор выбранной платы и версии CMake/Ninja по
+              требованиям SDK. Пробная сборка ещё не выполнялась; дополнительные инструменты,
+              включая ULP, будут проверяться при подключении сборки.
             </p>
             <small>Последняя проверка: {new Date(report.checkedAt).toLocaleString('ru-RU')}</small>
           </div>
@@ -120,7 +206,7 @@ export default function EnvironmentPage(): React.JSX.Element {
               value={report.selectedPath ?? '__auto__'}
               onChange={(event) => {
                 const path = event.target.value === '__auto__' ? null : event.target.value
-                void run(() => window.api.selectIdf(path))
+                void run(() => window.api.selectIdf(path, target))
               }}
             >
               <option value="__auto__">Автоматический поиск</option>
@@ -177,6 +263,33 @@ export default function EnvironmentPage(): React.JSX.Element {
               </div>
             ))}
           </div>
+          {report.readiness && report.readiness.target === target && (
+            <>
+              <h3>Проверка зависимостей для {targetNames[report.readiness.target]}</h3>
+              {report.readiness.pythonPackages.constraintsPath && (
+                <p className="environment-path">
+                  Ограничения Python: {report.readiness.pythonPackages.constraintsPath}
+                </p>
+              )}
+              <div className="environment-tool-grid">
+                <DependencyCard
+                  title="Python-пакеты ESP-IDF"
+                  check={report.readiness.pythonPackages}
+                />
+                <DependencyCard
+                  title={`Основной компилятор ${targetNames[report.readiness.target]}`}
+                  check={report.readiness.compiler}
+                />
+                {report.readiness.buildTools.map((tool) => (
+                  <DependencyCard
+                    key={tool.name}
+                    title={`Совместимость ${tool.name === 'cmake' ? 'CMake' : 'Ninja'}`}
+                    check={tool}
+                  />
+                ))}
+              </div>
+            </>
+          )}
           {report.warnings.length > 0 && (
             <div className="environment-summary" role="status">
               {report.warnings.map((warning, index) => (

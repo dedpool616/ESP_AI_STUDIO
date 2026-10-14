@@ -93,6 +93,15 @@
   font-family: Consolas, monospace;
 }
 
+.environment-diagnostics {
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  color: #ffb8b8;
+}
+
 .environment-card small,
 .environment-summary small {
   color: #858c9b;

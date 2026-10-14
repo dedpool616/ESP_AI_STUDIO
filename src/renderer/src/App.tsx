@@ -686,7 +686,12 @@ function App(): React.JSX.Element {
             </section>
           )}
 
-          {activePage === 'ESP-IDF Manager' && <EnvironmentPage />}
+          {activePage === 'ESP-IDF Manager' && (
+            <EnvironmentPage
+              key={currentProject?.path ?? 'no-project'}
+              projectTarget={currentProject?.board}
+            />
+          )}
           <div className={`code-editor-keep-alive ${activePage === 'Code Editor' ? 'active' : ''}`}>
             <CodeEditorPage
               blocked={

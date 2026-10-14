@@ -1,6 +1,6 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
 import type { EditorSessions } from '../shared/editorSession'
-import type { EnvironmentResult } from '../shared/environment'
+import type { EnvironmentResult, CheckTarget } from '../shared/environment'
 
 interface ProjectTreeNode {
   name: string
@@ -76,9 +76,9 @@ interface SaveAppStateResult {
 }
 
 interface ESPAIStudioAPI {
-  checkEnvironment: () => Promise<EnvironmentResult>
-  selectIdf: (path: string | null) => Promise<EnvironmentResult>
-  chooseIdf: () => Promise<EnvironmentResult>
+  checkEnvironment: (target?: CheckTarget) => Promise<EnvironmentResult>
+  selectIdf: (path: string | null, target?: CheckTarget) => Promise<EnvironmentResult>
+  chooseIdf: (target?: CheckTarget) => Promise<EnvironmentResult>
   inspectProject: (projectPath: string) => Promise<OpenProjectResult>
   onCloseRequested: (callback: () => void) => () => void
   confirmClose: () => void

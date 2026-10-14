@@ -3,6 +3,7 @@ import { mkdir, readFile, rename, writeFile } from 'fs/promises'
 import { isAbsolute, join } from 'path'
 import { checkEnvironment, inspectIdf } from './environment'
 import type { EnvironmentResult } from '../shared/environment'
+import { isCheckTarget, type CheckTarget } from '../shared/environment'
 
 export function registerEnvironmentHandlers(
   ipc: Pick<IpcMain, 'handle'>,
@@ -27,7 +28,7 @@ export function registerEnvironmentHandlers(
     }
   }
 
-  const select = async (path: unknown): Promise<EnvironmentResult> => {
+  const select = async (path: unknown, target: CheckTarget): Promise<EnvironmentResult> => {
     if (path !== null && (typeof path !== 'string' || !isAbsolute(path))) {
       return { success: false, error: 'Укажите абсолютный путь к папке ESP-IDF.' }
     }
@@ -47,11 +48,13 @@ export function registerEnvironmentHandlers(
       'utf8'
     )
     await rename(`${settingsPath}.tmp`, settingsPath)
-    return { success: true, report: await checkEnvironment(selectedPath) }
+    return { success: true, report: await checkEnvironment(selectedPath, target) }
   }
 
-  ipc.handle('environment:check', () =>
+  ipc.handle('environment:check', (_, target: unknown = 'esp32s3') =>
     run(async () => {
+      if (!isCheckTarget(target))
+        return { success: false, error: 'Эта плата пока не поддерживается проверкой окружения.' }
       let selectedPath: string | null = null
       let warning: string | undefined
       try {
@@ -65,16 +68,23 @@ export function registerEnvironmentHandlers(
           warning = 'Не удалось прочитать настройки ESP-IDF. Используется автоматический поиск.'
         }
       }
-      const report = await checkEnvironment(selectedPath)
+      const report = await checkEnvironment(selectedPath, target)
       if (warning) report.warnings.push(warning)
       return { success: true, report }
     })
   )
-  ipc.handle('environment:select-idf', (_, path: unknown) => run(() => select(path)))
-  ipc.handle('environment:choose-idf', () =>
+  ipc.handle('environment:select-idf', (_, path: unknown, target: unknown = 'esp32s3') =>
+    run(() =>
+      isCheckTarget(target)
+        ? select(path, target)
+        : Promise.resolve({ success: false, error: 'Плата не поддерживается.' })
+    )
+  )
+  ipc.handle('environment:choose-idf', (_, target: unknown = 'esp32s3') =>
     run(async () => {
+      if (!isCheckTarget(target)) return { success: false, error: 'Плата не поддерживается.' }
       const folder = await chooseFolder()
-      return folder ? await select(folder) : { success: false, canceled: true }
+      return folder ? await select(folder, target) : { success: false, canceled: true }
     })
   )
 }

@@ -1,4 +1,26 @@
 export type ToolName = 'python' | 'git' | 'cmake' | 'ninja'
+export const checkTargets = ['esp32', 'esp32s2', 'esp32s3', 'esp32c3', 'esp32c6'] as const
+export type CheckTarget = (typeof checkTargets)[number]
+export function isCheckTarget(value: unknown): value is CheckTarget {
+  return checkTargets.some((target) => target === value)
+}
+
+export interface DependencyCheck {
+  status: 'passed' | 'partial' | 'missing' | 'error' | 'skipped'
+  detail: string
+  path?: string
+  version?: string
+  expectedVersions?: string[]
+  diagnostics?: string
+}
+
+export interface ReadinessReport {
+  target: CheckTarget
+  pythonPackages: DependencyCheck & { constraintsPath?: string }
+  compiler: DependencyCheck & { name?: string; machine?: string }
+  buildTools: Array<DependencyCheck & { name: 'cmake' | 'ninja' }>
+  dependenciesPassed: boolean
+}
 
 export interface ToolCheck {
   name: ToolName
@@ -29,6 +51,7 @@ export interface EnvironmentReport {
   tools: ToolCheck[]
   warnings: string[]
   basicToolsAvailable: boolean
+  readiness?: ReadinessReport
 }
 
 export interface EnvironmentResult {

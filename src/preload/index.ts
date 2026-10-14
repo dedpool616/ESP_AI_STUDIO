@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 import { electronAPI } from '@electron-toolkit/preload'
-import type { EnvironmentResult } from '../shared/environment'
+import type { EnvironmentResult, CheckTarget } from '../shared/environment'
 
 interface CreateProjectOptions {
   projectName: string
@@ -12,10 +12,12 @@ interface CreateProjectOptions {
 }
 
 const api = {
-  checkEnvironment: (): Promise<EnvironmentResult> => ipcRenderer.invoke('environment:check'),
-  selectIdf: (path: string | null): Promise<EnvironmentResult> =>
-    ipcRenderer.invoke('environment:select-idf', path),
-  chooseIdf: (): Promise<EnvironmentResult> => ipcRenderer.invoke('environment:choose-idf'),
+  checkEnvironment: (target?: CheckTarget): Promise<EnvironmentResult> =>
+    ipcRenderer.invoke('environment:check', target),
+  selectIdf: (path: string | null, target?: CheckTarget): Promise<EnvironmentResult> =>
+    ipcRenderer.invoke('environment:select-idf', path, target),
+  chooseIdf: (target?: CheckTarget): Promise<EnvironmentResult> =>
+    ipcRenderer.invoke('environment:choose-idf', target),
   inspectProject: (projectPath: string) => ipcRenderer.invoke('project:inspect', projectPath),
   onCloseRequested: (callback: () => void) => {
     const listener = (): void => callback()

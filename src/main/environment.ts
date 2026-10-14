@@ -4,6 +4,8 @@ import { homedir } from 'os'
 import { basename, delimiter, dirname, isAbsolute, join, resolve } from 'path'
 import { promisify } from 'util'
 import type { EnvironmentReport, IdfInstallation, ToolCheck, ToolName } from '../shared/environment'
+import type { CheckTarget } from '../shared/environment'
+import { checkReadiness } from './environmentReadiness'
 
 const execFileAsync = promisify(execFile)
 
@@ -187,7 +189,8 @@ async function probeTool(name: ToolName, candidates: Executable[]): Promise<Tool
 }
 
 export async function checkEnvironment(
-  selectedPath: string | null = null
+  selectedPath: string | null = null,
+  target?: CheckTarget
 ): Promise<EnvironmentReport> {
   const env = process.env
   const home = homedir()
@@ -339,7 +342,7 @@ export async function checkEnvironment(
       'Python выбранной установки недоступен. Найденный системный Python может не содержать пакеты ESP-IDF.'
     )
   }
-  return {
+  const report: EnvironmentReport = {
     checkedAt: new Date().toISOString(),
     selectedPath,
     idf: idf
@@ -356,4 +359,12 @@ export async function checkEnvironment(
     warnings,
     basicToolsAvailable: !!idf && toolChecks.every((tool) => tool.status === 'found')
   }
+  if (target)
+    report.readiness = await checkReadiness(
+      report,
+      target,
+      [...new Set([selected?.toolsPath, ...toolsRoots].filter((root): root is string => !!root))],
+      findTool
+    )
+  return report
 }

@@ -26,12 +26,15 @@ function loadSource(file, requireModule, globals = {}) {
   })
   return module.exports
 }
+const sharedEnvironment = loadSource('src/shared/environment.ts', require)
 
 function detectorFixture() {
   const files = new Map()
   const calls = []
   const failures = new Set()
   const versions = new Map()
+  const commandOutputs = new Map()
+  const commandErrors = new Map()
   const env = { PATH: 'C:\\mock\\bin' }
   const normalize = (value) => path.win32.normalize(value).toLowerCase()
   const add = (name, content = '') => files.set(normalize(name), content)
@@ -74,9 +77,19 @@ function detectorFixture() {
   executable[promisify.custom] = async (name, args, options) => {
     calls.push({ name, args, options })
     if (failures.has(normalize(name))) throw Object.assign(new Error('timeout'), { killed: true })
+    if (commandErrors.has(args[0])) throw commandErrors.get(args[0])
+    if (commandOutputs.has(args[0])) return { stdout: commandOutputs.get(args[0]), stderr: '' }
+    if (args[0] === '-B') return { stdout: 'Python requirements are satisfied.', stderr: '' }
+    if (args[0] === '-dumpmachine')
+      return { stdout: path.win32.basename(name).replace(/-gcc\.exe$/, ''), stderr: '' }
     return { stdout: versions.get(normalize(name)) ?? '', stderr: '' }
   }
   const requireModule = (name) => {
+    if (name === '../shared/environment') return sharedEnvironment
+    if (name === './environmentReadiness')
+      return loadSource('src/main/environmentReadiness.ts', requireModule, {
+        process: { platform: 'win32', env }
+      })
     if (name === 'fs/promises') return filesystem
     if (name === 'os') return { homedir: () => 'C:\\mock\\user' }
     if (name === 'child_process') return { execFile: executable }
@@ -128,6 +141,8 @@ function detectorFixture() {
     calls,
     failures,
     versions,
+    commandOutputs,
+    commandErrors,
     env,
     add,
     normalize,
@@ -135,6 +150,182 @@ function detectorFixture() {
     requireModule
   }
 }
+
+function addDependencyFixture(fixture) {
+  const root = 'C:\\mock\\tools'
+  const gcc =
+    root + '\\xtensa-esp-elf\\esp-15.2.0_20251204\\xtensa-esp-elf\\bin\\xtensa-esp-elf-gcc.exe'
+  fixture.add(path.win32.join(fixture.sdk, 'tools/check_python_dependencies.py'))
+  fixture.add(
+    path.win32.join(fixture.sdk, 'tools/requirements/requirements.core.txt'),
+    'packaging\nclick'
+  )
+  fixture.add(path.win32.join(root, 'espidf.constraints.v6.1.txt'), 'packaging==25.0')
+  fixture.add(
+    path.win32.join(fixture.sdk, 'tools/tools.json'),
+    JSON.stringify({
+      tools: [
+        {
+          name: 'xtensa-esp-elf',
+          supported_targets: ['esp32', 'esp32s2', 'esp32s3'],
+          versions: [{ name: 'esp-15.2.0_20251204', status: 'recommended' }]
+        },
+        {
+          name: 'riscv32-esp-elf',
+          supported_targets: ['esp32c3', 'esp32c6'],
+          versions: [{ name: 'esp-15.2.0_20251204', status: 'recommended' }]
+        },
+        { name: 'cmake', versions: [{ name: '4.0.3', status: 'recommended' }] },
+        { name: 'ninja', versions: [{ name: '1.12.1', status: 'recommended' }] }
+      ]
+    })
+  )
+  fixture.add(gcc)
+  fixture.versions.set(
+    fixture.normalize(gcc),
+    'xtensa-esp-elf-gcc (crosstool-NG esp-15.2.0_20251204) 15.2.0'
+  )
+  return { root, gcc }
+}
+
+test('Python requirements, compiler architecture and SDK tool versions are checked offline', async () => {
+  const fixture = detectorFixture()
+  addDependencyFixture(fixture)
+  const readiness = (await fixture.detector.checkEnvironment(null, 'esp32s3')).readiness
+  assert.equal(readiness.target, 'esp32s3')
+  assert.equal(readiness.pythonPackages.status, 'passed')
+  assert.equal(readiness.compiler.status, 'passed')
+  assert.equal(readiness.compiler.machine, 'xtensa-esp-elf')
+  assert.equal(readiness.dependenciesPassed, true)
+  const python = fixture.calls.find((call) => call.args[0] === '-B')
+  assert.ok(python.args.includes('--requirements'))
+  assert.ok(python.args.includes('--constraints'))
+  assert.equal(python.options.env.PYTHONDONTWRITEBYTECODE, '1')
+  assert.equal(python.options.env.IDF_TARGET, 'esp32s3')
+  assert.equal(
+    fixture.calls.every((call) => call.options.shell === false),
+    true
+  )
+  assert.equal(
+    fixture.calls.some((call) => call.args.includes('install')),
+    false
+  )
+  assert.equal(fixture.env.IDF_TARGET, undefined)
+})
+
+test('missing local constraints never produces a fully passed Python check', async () => {
+  const fixture = detectorFixture()
+  const { root } = addDependencyFixture(fixture)
+  fixture.files.delete(fixture.normalize(path.win32.join(root, 'espidf.constraints.v6.1.txt')))
+  const readiness = (await fixture.detector.checkEnvironment(null, 'esp32s3')).readiness
+  assert.equal(readiness.pythonPackages.status, 'partial')
+  assert.equal(readiness.dependenciesPassed, false)
+  assert.equal(
+    fixture.calls.find((call) => call.args[0] === '-B').args.includes('--constraints'),
+    false
+  )
+})
+
+test('Python failure preserves dependency diagnostics without the environment dump', async () => {
+  const fixture = detectorFixture()
+  addDependencyFixture(fixture)
+  fixture.commandErrors.set(
+    '-B',
+    Object.assign(new Error('package mismatch'), {
+      stdout: 'Requirement click>=8 was not met.\nDiagnostic information:\nPATH: sensitive-value',
+      stderr: ''
+    })
+  )
+  const readiness = (await fixture.detector.checkEnvironment(null, 'esp32s3')).readiness
+  assert.equal(readiness.pythonPackages.status, 'error')
+  assert.ok(readiness.pythonPackages.diagnostics.includes('click>=8'))
+  assert.equal(readiness.pythonPackages.diagnostics.includes('sensitive-value'), false)
+  assert.equal(readiness.compiler.status, 'passed')
+  assert.equal(readiness.dependenciesPassed, false)
+})
+
+test('wrong compiler architecture and wrong SDK build tool versions are rejected', async () => {
+  const fixture = detectorFixture()
+  addDependencyFixture(fixture)
+  fixture.commandOutputs.set('-dumpmachine', 'riscv32-esp-elf')
+  fixture.versions.set(fixture.normalize(fixture.tools.cmake), 'cmake version 4.1.0')
+  const readiness = (await fixture.detector.checkEnvironment(null, 'esp32s3')).readiness
+  assert.equal(readiness.compiler.status, 'error')
+  assert.equal(readiness.buildTools.find((tool) => tool.name === 'cmake').status, 'error')
+  assert.equal(readiness.dependenciesPassed, false)
+})
+
+test('RISC-V target does not accept an installed Xtensa compiler', async () => {
+  const fixture = detectorFixture()
+  addDependencyFixture(fixture)
+  const readiness = (await fixture.detector.checkEnvironment(null, 'esp32c3')).readiness
+  assert.equal(readiness.compiler.name, 'riscv32-esp-elf')
+  assert.equal(readiness.compiler.status, 'missing')
+  assert.equal(readiness.dependenciesPassed, false)
+})
+
+test('incompatible compiler version and missing SDK metadata cannot pass readiness', async () => {
+  const fixture = detectorFixture()
+  const { gcc } = addDependencyFixture(fixture)
+  fixture.versions.set(fixture.normalize(gcc), 'xtensa-esp-elf-gcc (crosstool-NG esp-old) 11.2.0')
+  assert.equal(
+    (await fixture.detector.checkEnvironment(null, 'esp32s3')).readiness.compiler.status,
+    'error'
+  )
+  fixture.files.delete(fixture.normalize(path.win32.join(fixture.sdk, 'tools/tools.json')))
+  const readiness = (await fixture.detector.checkEnvironment(null, 'esp32s3')).readiness
+  assert.equal(readiness.compiler.status, 'missing')
+  assert.equal(readiness.dependenciesPassed, false)
+})
+
+test('invalid target is rejected at IPC boundary before checking or changing settings', async () => {
+  const fixture = detectorFixture()
+  const handlers = new Map()
+  const ipc = loadSource('src/main/environmentIpc.ts', (name) =>
+    name === './environment' ? fixture.detector : fixture.requireModule(name)
+  )
+  ipc.registerEnvironmentHandlers(
+    { handle: (name, callback) => handlers.set(name, callback) },
+    'C:\\mock\\settings',
+    async () => null
+  )
+  assert.equal((await handlers.get('environment:check')({}, 'esp32; install')).success, false)
+  assert.equal(
+    (await handlers.get('environment:select-idf')({}, fixture.sdk, 'unknown')).success,
+    false
+  )
+  assert.equal(fixture.calls.length, 0)
+  assert.equal(
+    fixture.files.has(fixture.normalize('C:\\mock\\settings\\environment-settings.json')),
+    false
+  )
+})
+
+test('checks isolate SDK and Python paths without changing the parent environment', async () => {
+  const fixture = detectorFixture()
+  addDependencyFixture(fixture)
+  fixture.env.IDF_PATH = 'C:\\old-sdk'
+  fixture.env.PYTHONPATH = 'C:\\old-python-modules'
+  const original = JSON.stringify(fixture.env)
+  await fixture.detector.checkEnvironment(null, 'esp32s3')
+  const python = fixture.calls.find((call) => call.args[0] === '-B')
+  assert.equal(python.options.env.IDF_PATH, fixture.sdk)
+  assert.equal(python.options.env.PYTHONPATH, undefined)
+  assert.equal(python.options.env.IDF_PYTHON_ENV_PATH, 'C:\\mock\\tools\\python\\venv')
+  assert.equal(JSON.stringify(fixture.env), original)
+})
+
+test('malformed tool version metadata is reported without crashing the check', async () => {
+  const fixture = detectorFixture()
+  addDependencyFixture(fixture)
+  fixture.add(
+    path.win32.join(fixture.sdk, 'tools/tools.json'),
+    JSON.stringify({ tools: [{ name: 'xtensa-esp-elf', supported_targets: 0, versions: 0 }] })
+  )
+  const report = await fixture.detector.checkEnvironment(null, 'esp32s3')
+  assert.equal(report.readiness.compiler.status, 'missing')
+  assert.equal(report.readiness.dependenciesPassed, false)
+})
 
 test('EIM installation is detected outside PATH and only fixed version commands are executed', async () => {
   const fixture = detectorFixture()
@@ -239,6 +430,7 @@ test('concurrent configuration actions are rejected and cancellation releases th
 
 test('EnvironmentPage survives StrictMode replay and folder cancellation without stale loading state', async () => {
   const slots = []
+  let checkedTarget
   let cursor = 0,
     effect,
     tree,
@@ -281,12 +473,14 @@ test('EnvironmentPage survives StrictMode replay and folder cancellation without
     (name) => {
       if (name === 'react') return react
       if (name === 'react/jsx-runtime') return require(name)
+      if (name.includes('shared/environment')) return sharedEnvironment
       throw new Error(`Unexpected import: ${name}`)
     },
     {
       window: {
         api: {
-          checkEnvironment: () => {
+          checkEnvironment: (target) => {
+            checkedTarget = target
             calls++
             return pending
           },
@@ -333,11 +527,29 @@ test('EnvironmentPage survives StrictMode replay and folder cancellation without
       .disabled,
     false
   )
-  assert.equal(find((node) => node.type === 'select').props.value, '__auto__')
-  find((node) => node.type === 'select').props.onChange({ target: { value: 'C:\\invalid' } })
+  assert.ok(find((node) => node.type === 'select' && node.props.value === '__auto__'))
+  find((node) => node.type === 'select' && node.props.value === '__auto__').props.onChange({
+    target: { value: 'C:\\invalid' }
+  })
   await new Promise(setImmediate)
   render()
   assert.equal(find((node) => node.props?.role === 'alert').props.children, 'invalid folder')
-  assert.equal(find((node) => node.type === 'select').props.value, '__auto__')
+  assert.ok(find((node) => node.type === 'select' && node.props.value === '__auto__'))
+  find((node) => node.type === 'select' && node.props.value === 'esp32s3').props.onChange({
+    target: { value: 'esp32c3' }
+  })
+  render()
+  assert.ok(
+    find((node) => node.type === 'button' && node.props.children === 'Проверка…').props.disabled
+  )
   cleanupAgain()
+  const cleanupTarget = effect()
+  await new Promise(setImmediate)
+  render()
+  assert.equal(checkedTarget, 'esp32c3')
+  assert.equal(
+    find((node) => node.type === 'select' && node.props.value === 'esp32c3').props.disabled,
+    false
+  )
+  cleanupTarget()
 })
