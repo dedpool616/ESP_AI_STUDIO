@@ -6,6 +6,7 @@ import { promisify } from 'util'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { parseEditorSessions, type EditorSessions } from '../shared/editorSession'
+import { registerEnvironmentHandlers } from './environmentIpc'
 
 const execFileAsync = promisify(execFile)
 
@@ -220,6 +221,13 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  registerEnvironmentHandlers(ipcMain, app.getPath('userData'), async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Выберите папку ESP-IDF SDK',
+      properties: ['openDirectory']
+    })
+    return result.canceled ? null : (result.filePaths[0] ?? null)
+  })
   electronApp.setAppUserModelId('io.github.dedpool616.espaistudio')
 
   app.on('browser-window-created', (_, window) => {

@@ -2,6 +2,7 @@ import { useEffect, useCallback, useLayoutEffect, useRef, useState } from 'react
 import CodeEditorPage from './pages/CodeEditorPage'
 import ProjectUnavailableDialog from './components/ProjectUnavailableDialog'
 import RecentProjectMenu from './components/RecentProjectMenu'
+import EnvironmentPage from './pages/EnvironmentPage'
 import {
   emptyEditorSession,
   hasUnsavedChanges,
@@ -195,6 +196,7 @@ function App(): React.JSX.Element {
     'Git',
     'Activity',
     'User Guide',
+    'ESP-IDF Manager',
     'Settings'
   ]
 
@@ -512,7 +514,7 @@ function App(): React.JSX.Element {
 
           <div className="environment-status">
             <span className="status-dot" />
-            Ready
+            IDE запущена
           </div>
         </header>
 
@@ -684,6 +686,7 @@ function App(): React.JSX.Element {
             </section>
           )}
 
+          {activePage === 'ESP-IDF Manager' && <EnvironmentPage />}
           <div className={`code-editor-keep-alive ${activePage === 'Code Editor' ? 'active' : ''}`}>
             <CodeEditorPage
               blocked={

@@ -2,6 +2,108 @@
   box-sizing: border-box;
 }
 
+.environment-page {
+  max-width: 1100px;
+}
+
+.environment-page > p,
+.environment-card p,
+.environment-summary p {
+  color: #aeb4c0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.environment-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 20px 0;
+}
+
+.environment-actions button {
+  padding: 10px 14px;
+  border: 1px solid #3b414d;
+  border-radius: 8px;
+  background: #242831;
+  cursor: pointer;
+}
+
+.environment-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.environment-summary,
+.environment-card {
+  margin: 16px 0;
+  padding: 18px;
+  border: 1px solid #353b47;
+  border-radius: 10px;
+  background: #171a20;
+}
+
+.environment-summary.available {
+  border-color: #397357;
+}
+
+.environment-selection {
+  margin: 24px 0;
+}
+
+.environment-tool-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.environment-tool-grid .environment-card {
+  margin: 0;
+}
+
+.environment-card h3 {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 0 12px;
+  font-size: 16px;
+}
+
+.environment-badge {
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: #473725;
+  color: #ecc382;
+  font-size: 11px;
+}
+
+.environment-badge.found {
+  background: #203d30;
+  color: #8ed6ac;
+}
+
+.environment-badge.error {
+  background: #452929;
+  color: #ff9d9d;
+}
+
+.environment-path {
+  overflow-wrap: anywhere;
+  font-family: Consolas, monospace;
+}
+
+.environment-card small,
+.environment-summary small {
+  color: #858c9b;
+}
+
+@media (max-width: 950px) {
+  .environment-tool-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .app-storage-error {
   position: fixed;
   right: 16px;
