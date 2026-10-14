@@ -1,7 +1,7 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
 import type { EditorSessions } from '../shared/editorSession'
 import type { EnvironmentResult, CheckTarget } from '../shared/environment'
-import type { BuildState, BuildResult } from '../shared/build'
+import type { BuildState, BuildResult, PortsResult } from '../shared/build'
 
 interface ProjectTreeNode {
   name: string
@@ -77,6 +77,8 @@ interface SaveAppStateResult {
 }
 
 interface ESPAIStudioAPI {
+  listPorts: (target: string) => Promise<PortsResult>
+  startFlash: (path: string, target: string, port: string) => Promise<BuildResult>
   getBuildState: () => Promise<BuildState>
   startBuild: (path: string, target: string) => Promise<BuildResult>
   checkEnvironment: (target?: CheckTarget) => Promise<EnvironmentResult>

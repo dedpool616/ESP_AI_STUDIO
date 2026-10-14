@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 import { electronAPI } from '@electron-toolkit/preload'
 import type { EnvironmentResult, CheckTarget } from '../shared/environment'
-import type { BuildState, BuildResult } from '../shared/build'
+import type { BuildState, BuildResult, PortsResult } from '../shared/build'
 
 interface CreateProjectOptions {
   projectName: string
@@ -13,6 +13,9 @@ interface CreateProjectOptions {
 }
 
 const api = {
+  listPorts: (target: string): Promise<PortsResult> => ipcRenderer.invoke('serial:ports', target),
+  startFlash: (path: string, target: string, port: string): Promise<BuildResult> =>
+    ipcRenderer.invoke('flash:start', path, target, port),
   getBuildState: (): Promise<BuildState> => ipcRenderer.invoke('build:state'),
   startBuild: (path: string, target: string): Promise<BuildResult> =>
     ipcRenderer.invoke('build:start', path, target),

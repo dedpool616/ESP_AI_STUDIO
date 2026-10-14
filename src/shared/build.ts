@@ -1,4 +1,6 @@
 export interface BuildState {
+  operation?: 'build' | 'flash'
+  port?: string
   status: 'idle' | 'running' | 'success' | 'error'
   projectPath: string
   target: string
@@ -6,6 +8,17 @@ export interface BuildState {
   error?: string
   startedAt?: string
   finishedAt?: string
+}
+
+export interface SerialPortInfo {
+  device: string
+  description: string
+}
+
+export interface PortsResult {
+  success: boolean
+  ports: SerialPortInfo[]
+  error?: string
 }
 
 export interface BuildResult {

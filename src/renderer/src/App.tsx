@@ -78,7 +78,7 @@ function App(): React.JSX.Element {
     }
   }, [])
 
-  const startBuild = async (): Promise<void> => {
+  const startBuild = async (port?: string): Promise<void> => {
     if (
       !currentProject ||
       buildBusy ||
@@ -91,7 +91,9 @@ function App(): React.JSX.Element {
     setBuildStarting(true)
     setProjectError('')
     try {
-      const result = await window.api.startBuild(currentProject.path, currentProject.board)
+      const result = port
+        ? await window.api.startFlash(currentProject.path, currentProject.board, port)
+        : await window.api.startBuild(currentProject.path, currentProject.board)
       setBuildState(result.state)
       if (!result.success) setProjectError(result.error ?? 'Не удалось начать сборку.')
     } catch (error) {
@@ -749,6 +751,11 @@ function App(): React.JSX.Element {
               </div>
               <div id="project-build">
                 <BuildPanel
+                  key={currentProject.path}
+                  target={currentProject.board}
+                  onFlash={(port) => {
+                    void startBuild(port)
+                  }}
                   state={buildState?.projectPath === currentProject.path ? buildState : null}
                   onBuild={() => {
                     void startBuild()
@@ -893,7 +900,9 @@ function App(): React.JSX.Element {
                 : 'Вкладки и активные файлы будут сохранены для следующего запуска.'}
             </p>
             {editorSaving && <p>Дождитесь завершения сохранения файла.</p>}
-            {buildBusy && <p>Дождитесь завершения сборки перед закрытием программы.</p>}
+            {buildBusy && (
+              <p>Дождитесь завершения сборки или прошивки перед закрытием программы.</p>
+            )}
             {(projectBusy || isCreating) && <p>Дождитесь завершения операции с проектом.</p>}
             {!isAppStateLoaded && <p>Дождитесь загрузки состояния IDE.</p>}
             {storageError && <p role="alert">{storageError}</p>}

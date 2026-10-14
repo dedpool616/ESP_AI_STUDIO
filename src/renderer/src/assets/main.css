@@ -1224,16 +1224,16 @@ button {
   line-height: 1.4;
 }
 .build-project-button {
-  background: #bdbdbd;
-  color: #000;
-  border: 1px solid #999;
+  background: #198754;
+  color: #fff;
+  border: 1px solid #198754;
   border-radius: 6px;
   padding: 10px 16px;
   cursor: pointer;
 }
 
 .build-project-button:hover:not(:disabled) {
-  background: #d0d0d0;
+  background: #157347;
 }
 
 .build-project-button:disabled {
@@ -1253,6 +1253,27 @@ button {
   padding: 20px;
   border: 1px solid #343b47;
   border-radius: 10px;
+}
+
+.flash-controls {
+  margin-top: 20px;
+}
+
+.flash-controls select {
+  margin: 0 12px;
+  max-width: 100%;
+  padding: 8px;
+}
+
+.flash-controls button {
+  padding: 10px 16px;
+  margin: 6px;
+}
+
+.flash-confirm {
+  border: 1px solid #777;
+  padding: 12px;
+  margin-top: 12px;
 }
 
 .build-log {

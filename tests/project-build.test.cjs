@@ -53,6 +53,11 @@ function fixture() {
         return { isCheckTarget: (value) => ['esp32s3', 'esp32c3'].includes(value) }
       if (name === 'child_process')
         return {
+          execFile(executable, args, options, callback) {
+            assert.equal(options.shell, false)
+            assert.equal(options.windowsHide, true)
+            callback(null, JSON.stringify([{ device: 'COM3', description: 'USB serial' }]))
+          },
           spawn(executable, args, options) {
             calls.push({ executable, args, options })
             child = new EventEmitter()
@@ -73,6 +78,8 @@ function fixture() {
     calls,
     report,
     api: module.exports,
+    ports: () => handlers.get('serial:ports')({}, 'esp32s3'),
+    flash: (port = 'COM3') => handlers.get('flash:start')({}, 'C:\\project', 'esp32s3', port),
     start: (project = 'C:\\project', target = 'esp32s3') =>
       handlers.get('build:start')({}, project, target),
     state: () => handlers.get('build:state')(),
@@ -80,6 +87,34 @@ function fixture() {
   }
 }
 const settle = () => new Promise((resolve) => setImmediate(resolve))
+
+test('port discovery is read-only and flashing requires valid port and matching build', async () => {
+  const f = fixture()
+  assert.equal((await f.ports()).ports[0].device, 'COM3')
+  assert.equal(f.calls.length, 0)
+  assert.equal(f.flash('COM3 & command').success, false)
+  f.flash()
+  await settle()
+  assert.equal(f.state().status, 'error')
+  assert.equal(f.calls.length, 0)
+  f.files.set(
+    'C:\\project\\build\\project_description.json',
+    JSON.stringify({ target: 'esp32s3', project_path: 'C:/project' })
+  )
+  f.flash('COM9')
+  await settle()
+  assert.equal(f.state().status, 'error')
+  assert.equal(f.calls.length, 0)
+  f.flash()
+  assert.equal(f.start().success, false)
+  await settle()
+  assert.equal(f.calls[0].args.at(-1), 'flash')
+  assert.ok(f.calls[0].args.includes('COM3'))
+  f.child().emit('close', 0)
+  await settle()
+  assert.equal(f.state().status, 'success')
+  assert.equal(f.state().operation, 'flash')
+})
 
 test('build rejects invalid requests and parallel starts; streams UTF-8 output and succeeds', async () => {
   const f = fixture()
