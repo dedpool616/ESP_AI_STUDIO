@@ -3,6 +3,8 @@ import CodeEditorPage from './pages/CodeEditorPage'
 import ProjectUnavailableDialog from './components/ProjectUnavailableDialog'
 import RecentProjectMenu from './components/RecentProjectMenu'
 import EnvironmentPage from './pages/EnvironmentPage'
+import BuildPanel from './components/BuildPanel'
+import { buildLabels, type BuildState } from '../../shared/build'
 import {
   emptyEditorSession,
   hasUnsavedChanges,
@@ -49,6 +51,56 @@ function App(): React.JSX.Element {
   const [activePage, setActivePage] = useState('Home')
   const [editorSessions, setEditorSessions] = useState<EditorSessions>({})
   const [editorSaving, setEditorSaving] = useState(false)
+  const [buildState, setBuildState] = useState<BuildState | null>(null)
+  const [buildStarting, setBuildStarting] = useState(false)
+  const buildStartingRef = useRef(false)
+  const buildBusy = buildStarting || buildState?.status === 'running'
+
+  useEffect(() => {
+    let cancelled = false
+    let timer: number | undefined
+    const poll = async (): Promise<void> => {
+      try {
+        const result = await window.api.getBuildState()
+        if (!cancelled) setBuildState(result)
+      } catch {
+        /* A later poll can recover from a transient IPC failure. */
+      }
+      if (!cancelled)
+        timer = window.setTimeout(() => {
+          void poll()
+        }, 700)
+    }
+    void poll()
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [])
+
+  const startBuild = async (): Promise<void> => {
+    if (
+      !currentProject ||
+      buildBusy ||
+      buildStartingRef.current ||
+      editorSaving ||
+      hasUnsavedChanges(editorSessions[currentProject.path] ?? emptyEditorSession)
+    )
+      return
+    buildStartingRef.current = true
+    setBuildStarting(true)
+    setProjectError('')
+    try {
+      const result = await window.api.startBuild(currentProject.path, currentProject.board)
+      setBuildState(result.state)
+      if (!result.success) setProjectError(result.error ?? 'Не удалось начать сборку.')
+    } catch (error) {
+      setProjectError(error instanceof Error ? error.message : 'Ошибка запуска сборки.')
+    } finally {
+      buildStartingRef.current = false
+      setBuildStarting(false)
+    }
+  }
   const [pendingProject, setPendingProject] = useState<ProjectInfo | null>(null)
   const [closeRequested, setCloseRequested] = useState(false)
   const [closing, setClosing] = useState(false)
@@ -83,6 +135,7 @@ function App(): React.JSX.Element {
   }
 
   const finishClose = async (): Promise<void> => {
+    if (buildBusy) return
     if (!isAppStateLoaded || editorSaving || closing || projectBusy || isCreating) return
     setClosing(true)
     setStorageError('')
@@ -654,7 +707,13 @@ function App(): React.JSX.Element {
 
                 <div className="info-card">
                   <span>Build</span>
-                  <strong>Not built</strong>
+                  <strong>
+                    {
+                      buildLabels[
+                        buildState?.projectPath === currentProject.path ? buildState.status : 'idle'
+                      ]
+                    }
+                  </strong>
                 </div>
 
                 <div className="info-card">
@@ -673,7 +732,12 @@ function App(): React.JSX.Element {
                   Code Editor
                 </button>
 
-                <button type="button">Build</button>
+                <button
+                  type="button"
+                  onClick={() => document.getElementById('project-build')?.scrollIntoView()}
+                >
+                  Сборка
+                </button>
 
                 <button type="button" onClick={() => setActivePage('AI')}>
                   AI
@@ -682,6 +746,18 @@ function App(): React.JSX.Element {
                 <button type="button" onClick={() => setActivePage('Monitor')}>
                   Monitor
                 </button>
+              </div>
+              <div id="project-build">
+                <BuildPanel
+                  state={buildState?.projectPath === currentProject.path ? buildState : null}
+                  onBuild={() => {
+                    void startBuild()
+                  }}
+                  blocked={!!buildBusy || editorSaving || projectBusy || !isAppStateLoaded}
+                  dirty={hasUnsavedChanges(
+                    editorSessions[currentProject.path] ?? emptyEditorSession
+                  )}
+                />
               </div>
             </section>
           )}
@@ -695,6 +771,7 @@ function App(): React.JSX.Element {
           <div className={`code-editor-keep-alive ${activePage === 'Code Editor' ? 'active' : ''}`}>
             <CodeEditorPage
               blocked={
+                (!!buildBusy && buildState?.projectPath === currentProject?.path) ||
                 closeRequested ||
                 closeProjectRequested ||
                 !!pendingProject ||
@@ -816,6 +893,7 @@ function App(): React.JSX.Element {
                 : 'Вкладки и активные файлы будут сохранены для следующего запуска.'}
             </p>
             {editorSaving && <p>Дождитесь завершения сохранения файла.</p>}
+            {buildBusy && <p>Дождитесь завершения сборки перед закрытием программы.</p>}
             {(projectBusy || isCreating) && <p>Дождитесь завершения операции с проектом.</p>}
             {!isAppStateLoaded && <p>Дождитесь загрузки состояния IDE.</p>}
             {storageError && <p role="alert">{storageError}</p>}
@@ -834,7 +912,14 @@ function App(): React.JSX.Element {
               </button>
               <button
                 type="button"
-                disabled={closing || editorSaving || projectBusy || isCreating || !isAppStateLoaded}
+                disabled={
+                  closing ||
+                  editorSaving ||
+                  projectBusy ||
+                  isCreating ||
+                  !isAppStateLoaded ||
+                  (!!buildBusy && closeRequested)
+                }
                 onClick={() => {
                   if (closeRequested) {
                     void finishClose()

@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 import { electronAPI } from '@electron-toolkit/preload'
 import type { EnvironmentResult, CheckTarget } from '../shared/environment'
+import type { BuildState, BuildResult } from '../shared/build'
 
 interface CreateProjectOptions {
   projectName: string
@@ -12,6 +13,9 @@ interface CreateProjectOptions {
 }
 
 const api = {
+  getBuildState: (): Promise<BuildState> => ipcRenderer.invoke('build:state'),
+  startBuild: (path: string, target: string): Promise<BuildResult> =>
+    ipcRenderer.invoke('build:start', path, target),
   checkEnvironment: (target?: CheckTarget): Promise<EnvironmentResult> =>
     ipcRenderer.invoke('environment:check', target),
   selectIdf: (path: string | null, target?: CheckTarget): Promise<EnvironmentResult> =>

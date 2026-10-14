@@ -82,6 +82,7 @@ function editorHost(api = {}) {
       if (name === 'monaco-editor') return {}
       if (name.includes('?worker')) return function Worker() {}
       if (name.includes('shared/editorSession')) return sessionsApi
+      if (name.includes('shared/build')) return { buildLabels: { idle: 'Не собирался' } }
       throw new Error(`Unexpected import: ${name}`)
     },
     {
@@ -380,6 +381,8 @@ function mainHost(fsApi = require('node:fs/promises'), userData = 'unused') {
     'src/main/index.ts',
     (name) => {
       if (name === './environmentIpc') return { registerEnvironmentHandlers() {} }
+      if (name === './projectBuild')
+        return { registerBuildHandlers() {}, isBuildRunning: () => false }
       if (name === 'electron')
         return {
           app: {
@@ -462,10 +465,13 @@ test('App keeps drafts on switching and refuses to close after failed session pe
       if (name === 'react/jsx-runtime') return require(name)
       if (name.includes('CodeEditorPage')) return { default: Editor }
       if (name.includes('EnvironmentPage')) return { default: function EnvironmentPage() {} }
+      if (name.includes('BuildPanel'))
+        return { default: function BuildPanel() {}, buildLabels: { idle: 'Не собирался' } }
       if (name.includes('ProjectUnavailableDialog'))
         return { default: function UnavailableDialog() {} }
       if (name.includes('RecentProjectMenu')) return { default: function RecentMenu() {} }
       if (name.includes('shared/editorSession')) return sessionsApi
+      if (name.includes('shared/build')) return { buildLabels: { idle: 'Не собирался' } }
       throw new Error(`Unexpected import: ${name}`)
     },
     {

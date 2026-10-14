@@ -1223,3 +1223,45 @@ button {
   font-size: 12px;
   line-height: 1.4;
 }
+.build-project-button {
+  background: #bdbdbd;
+  color: #000;
+  border: 1px solid #999;
+  border-radius: 6px;
+  padding: 10px 16px;
+  cursor: pointer;
+}
+
+.build-project-button:hover:not(:disabled) {
+  background: #d0d0d0;
+}
+
+.build-project-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.build-project-button.is-building:disabled {
+  background: #dc3545;
+  color: #fff;
+  border-color: #dc3545;
+  opacity: 1;
+}
+
+.build-panel {
+  margin-top: 24px;
+  padding: 20px;
+  border: 1px solid #343b47;
+  border-radius: 10px;
+}
+
+.build-log {
+  height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 12px;
+  background: #0c0e12;
+  color: #d7e0eb;
+  user-select: text;
+}

@@ -7,6 +7,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { parseEditorSessions, type EditorSessions } from '../shared/editorSession'
 import { registerEnvironmentHandlers } from './environmentIpc'
+import { registerBuildHandlers, isBuildRunning } from './projectBuild'
 
 const execFileAsync = promisify(execFile)
 
@@ -188,6 +189,7 @@ function createWindow(): void {
   let closeAllowed = false
   const confirmClose = (event: Electron.IpcMainEvent): void => {
     if (event.sender !== mainWindow.webContents) return
+    if (isBuildRunning()) return
     closeAllowed = true
     mainWindow.close()
   }
@@ -221,6 +223,7 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  registerBuildHandlers(ipcMain, app.getPath('userData'))
   registerEnvironmentHandlers(ipcMain, app.getPath('userData'), async () => {
     const result = await dialog.showOpenDialog({
       title: 'Выберите папку ESP-IDF SDK',
