@@ -4,6 +4,7 @@ import { electronAPI } from '@electron-toolkit/preload'
 import type { EnvironmentResult, CheckTarget } from '../shared/environment'
 import type { BuildState, BuildResult, PortsResult } from '../shared/build'
 import type { MonitorState } from '../shared/monitor'
+import type { FileMutation, FileMutationResult } from '../shared/projectFiles'
 
 interface CreateProjectOptions {
   projectName: string
@@ -14,6 +15,8 @@ interface CreateProjectOptions {
 }
 
 const api = {
+  mutateProjectFile: (request: FileMutation): Promise<FileMutationResult> =>
+    ipcRenderer.invoke('project:mutate', request),
   getMonitorState: (): Promise<MonitorState> => ipcRenderer.invoke('monitor:state'),
   startMonitor: (
     target: string,

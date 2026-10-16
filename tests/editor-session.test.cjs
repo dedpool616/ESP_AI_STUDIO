@@ -23,6 +23,7 @@ function loadSource(relativePath, requireModule, globals = {}) {
 }
 
 const sessionsApi = loadSource('src/shared/editorSession.ts', require)
+const projectFilesApi = loadSource('src/shared/projectFiles.ts', require)
 const deferred = () => {
   let resolve, reject
   const promise = new Promise((yes, no) => {
@@ -82,6 +83,7 @@ function editorHost(api = {}) {
       if (name === 'monaco-editor') return {}
       if (name.includes('?worker')) return function Worker() {}
       if (name.includes('shared/editorSession')) return sessionsApi
+      if (name.includes('shared/projectFiles')) return projectFilesApi
       if (name.includes('shared/build')) return { buildLabels: { idle: 'Не собирался' } }
       throw new Error(`Unexpected import: ${name}`)
     },
@@ -126,6 +128,7 @@ function editorHost(api = {}) {
   }
   render()
   return {
+    find,
     render,
     get sessions() {
       return sessions
@@ -169,6 +172,56 @@ function editorHost(api = {}) {
     }
   }
 }
+
+test('empty tree context menu creates files inline with Enter and cancels with Escape', async () => {
+  const calls = []
+  const host = editorHost({
+    mutateProjectFile: async (request) => {
+      calls.push(request)
+      return { success: true, relativePath: request.name }
+    }
+  })
+  const context = () => {
+    host
+      .find((node) => node.type === 'aside')
+      .props.onContextMenu({ preventDefault() {}, clientX: 30, clientY: 40 })
+    host.render()
+  }
+  context()
+  assert.ok(host.find((node) => node.props?.role === 'menu'))
+  host
+    .find((node) => node.props?.role === 'menuitem' && node.props.children === 'Новый файл')
+    .props.onClick()
+  host.render()
+  assert.equal(
+    host.find((node) => node.props?.role === 'dialog'),
+    null
+  )
+  let input = host.find((node) => node.props?.['aria-label'] === 'Имя нового файла')
+  input.props.onChange({ target: { value: 'new.c' } })
+  host.render()
+  input = host.find((node) => node.props?.['aria-label'] === 'Имя нового файла')
+  input.props.onKeyDown({ key: 'Enter', preventDefault() {}, stopPropagation() {} })
+  await new Promise((resolve) => setImmediate(resolve))
+  host.render()
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].relativePath, '')
+  assert.equal(calls[0].name, 'new.c')
+  context()
+  host
+    .find((node) => node.props?.role === 'menuitem' && node.props.children === 'Новая папка')
+    .props.onClick()
+  host.render()
+  host
+    .find((node) => node.props?.['aria-label'] === 'Имя новой папки')
+    .props.onKeyDown({ key: 'Escape', preventDefault() {}, stopPropagation() {} })
+  host.render()
+  assert.equal(
+    host.find((node) => node.props?.['aria-label'] === 'Имя новой папки'),
+    null
+  )
+  assert.equal(calls.length, 1)
+})
 
 test('old state and malformed sessions do not erase valid recovery buffers', () => {
   assert.equal(Object.keys(sessionsApi.parseEditorSessions(undefined)).length, 0)
@@ -381,6 +434,7 @@ function mainHost(fsApi = require('node:fs/promises'), userData = 'unused') {
     'src/main/index.ts',
     (name) => {
       if (name === './environmentIpc') return { registerEnvironmentHandlers() {} }
+      if (name === './projectFiles') return { registerProjectFileHandlers() {} }
       if (name === './projectBuild')
         return { registerBuildHandlers() {}, isBuildRunning: () => false, stopMonitor() {} }
       if (name === 'electron')

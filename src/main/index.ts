@@ -7,6 +7,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { parseEditorSessions, type EditorSessions } from '../shared/editorSession'
 import { registerEnvironmentHandlers } from './environmentIpc'
+import { registerProjectFileHandlers } from './projectFiles'
 import { registerBuildHandlers, isBuildRunning, stopMonitor } from './projectBuild'
 
 const execFileAsync = promisify(execFile)
@@ -224,6 +225,7 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  registerProjectFileHandlers(ipcMain, (path) => shell.trashItem(path), isBuildRunning)
   registerBuildHandlers(ipcMain, app.getPath('userData'))
   registerEnvironmentHandlers(ipcMain, app.getPath('userData'), async () => {
     const result = await dialog.showOpenDialog({

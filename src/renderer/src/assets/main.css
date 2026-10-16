@@ -1327,3 +1327,32 @@ button {
   color: #aaa;
   cursor: default;
 }
+.tree-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+}
+
+.tree-inline-entry {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  width: 100%;
+  padding: 4px;
+}
+
+.tree-inline-entry input {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  background: #151922;
+  color: #fff;
+  border: 1px solid #79bbff;
+  padding: 4px;
+}
+
+.tree-inline-entry small {
+  white-space: normal;
+  color: #aaa;
+  font-size: 11px;
+}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { EditorLocation } from '../../../shared/buildDiagnostics'
+import { affectsFile, type FileAction } from '../../../shared/projectFiles'
 import {
   emptyEditorSession,
   markFileSaved,
@@ -63,6 +64,8 @@ interface CodeEditorPageProps {
 }
 
 interface TreeNodeProps {
+  onManage?: (node: ProjectTreeNode, x: number, y: number) => void
+  renderEntry?: (node: ProjectTreeNode, position: 'name' | 'children') => React.ReactNode
   node: ProjectTreeNode
   activeFilePath?: string
   onOpenFile: (node: ProjectTreeNode) => void
@@ -107,23 +110,38 @@ function getLanguage(fileName: string): string {
   return 'plaintext'
 }
 
-function TreeNode({ node, activeFilePath, onOpenFile }: TreeNodeProps): React.JSX.Element {
+function TreeNode({
+  node,
+  activeFilePath,
+  onOpenFile,
+  onManage,
+  renderEntry
+}: TreeNodeProps): React.JSX.Element {
   if (node.type === 'directory') {
     return (
       <details className="tree-directory" open>
-        <summary>
+        <summary
+          onContextMenu={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+            onManage?.(node, event.clientX, event.clientY)
+          }}
+        >
           <span className="tree-icon">▾</span>
 
-          {node.name}
+          {renderEntry?.(node, 'name') ?? node.name}
         </summary>
 
         <div className="tree-children">
+          {renderEntry?.(node, 'children')}
           {node.children?.map((child) => (
             <TreeNode
               key={child.relativePath}
               node={child}
               activeFilePath={activeFilePath}
               onOpenFile={onOpenFile}
+              onManage={onManage}
+              renderEntry={renderEntry}
             />
           ))}
         </div>
@@ -131,11 +149,19 @@ function TreeNode({ node, activeFilePath, onOpenFile }: TreeNodeProps): React.JS
     )
   }
 
+  const editing = renderEntry?.(node, 'name')
+  if (editing) return <div className="tree-file">{editing}</div>
+
   return (
     <button
       type="button"
       className={`tree-file ${activeFilePath === node.relativePath ? 'active' : ''}`}
       onClick={() => onOpenFile(node)}
+      onContextMenu={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        onManage?.(node, event.clientX, event.clientY)
+      }}
     >
       <span className="tree-file-icon">◦</span>
 
@@ -152,8 +178,24 @@ function CodeEditorPage({
   sessions,
   setSessions,
   onSavingChange,
-  blocked
+  blocked: parentBlocked
 }: CodeEditorPageProps): React.JSX.Element {
+  const [fileMenu, setFileMenu] = useState<ProjectTreeNode | null>(null)
+  const [contextMenu, setContextMenu] = useState<{
+    node: ProjectTreeNode
+    x: number
+    y: number
+  } | null>(null)
+  const [fileAction, setFileAction] = useState<FileAction>('create-file')
+  const [entryName, setEntryName] = useState('')
+  const [mutationBusy, setMutationBusy] = useState(false)
+  const [mutationError, setMutationError] = useState('')
+  const [treeRevision, setTreeRevision] = useState(0)
+  const blocked = parentBlocked || !!fileMenu || !!contextMenu || mutationBusy
+  const manage = (node: ProjectTreeNode, x: number, y: number): void => {
+    if (!projectPath || parentBlocked || savingRef.current || mutationBusy || fileMenu) return
+    setContextMenu({ node, x, y })
+  }
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
   const appliedLocation = useRef<number | null>(null)
 
@@ -199,7 +241,7 @@ function CodeEditorPage({
     return () => {
       generation.current += 1
     }
-  }, [projectPath])
+  }, [projectPath, treeRevision])
 
   const [fileLoading, setFileLoading] = useState(false)
 
@@ -255,6 +297,8 @@ function CodeEditorPage({
     let cancelled = false
 
     const loadTree = async (): Promise<void> => {
+      setFileMenu(null)
+      setContextMenu(null)
       setFileLoading(false)
       setPendingClosePath(null)
       setOperationError('')
@@ -297,7 +341,7 @@ function CodeEditorPage({
     return () => {
       cancelled = true
     }
-  }, [projectPath])
+  }, [projectPath, treeRevision])
 
   const handleOpenFile = async (node: ProjectTreeNode): Promise<void> => {
     if (!projectPath || blocked || node.type !== 'file') {
@@ -353,6 +397,63 @@ function CodeEditorPage({
         pendingReads.current.delete(node.relativePath)
         setFileLoading(pendingReads.current.size > 0)
       }
+    }
+  }
+
+  const mutateEntry = async (): Promise<void> => {
+    if (!projectPath || !fileMenu || mutationBusy || parentBlocked || savingRef.current) return
+    const path = fileMenu.relativePath
+    if (
+      fileAction === 'delete' &&
+      openFiles.some(
+        (file) => affectsFile(file.relativePath, path) && file.content !== file.savedContent
+      )
+    ) {
+      setMutationError('Сначала сохраните изменения в удаляемых файлах или закройте их вкладки.')
+      return
+    }
+    setMutationBusy(true)
+    onSavingChange(true)
+    setMutationError('')
+    generation.current++
+    pendingReads.current.clear()
+    setFileLoading(false)
+    try {
+      const result = await window.api.mutateProjectFile({
+        projectPath,
+        relativePath: path,
+        action: fileAction,
+        name: entryName
+      })
+      if (!result.success) throw new Error(result.error ?? 'Операция не выполнена.')
+      setSessions((sessions) => {
+        const session = sessions[projectPath] ?? emptyEditorSession
+        const next = session.openFiles.flatMap((file) => {
+          if (!affectsFile(file.relativePath, path)) return [file]
+          if (fileAction === 'delete') return []
+          if (fileAction !== 'rename' || !result.relativePath) return [file]
+          const relativePath =
+            result.relativePath + file.relativePath.replaceAll('\\', '/').slice(path.length)
+          return [{ ...file, relativePath, name: relativePath.split('/').at(-1)! }]
+        })
+        let active = session.activeFilePath
+        if (active && affectsFile(active, path)) {
+          if (fileAction === 'delete') active = next[0]?.relativePath ?? null
+          if (fileAction === 'rename' && result.relativePath)
+            active = result.relativePath + active.replaceAll('\\', '/').slice(path.length)
+        }
+        return {
+          ...sessions,
+          [projectPath]: { ...session, openFiles: next, activeFilePath: active }
+        }
+      })
+      setFileMenu(null)
+      setTreeRevision((value) => value + 1)
+    } catch (error) {
+      setMutationError(error instanceof Error ? error.message : 'Ошибка файловой операции.')
+    } finally {
+      setMutationBusy(false)
+      onSavingChange(false)
     }
   }
 
@@ -507,6 +608,64 @@ function CodeEditorPage({
     }
   }, [handleSave, isActive, blocked])
 
+  const beginAction = (action: FileAction): void => {
+    if (!contextMenu) return
+    setFileMenu(contextMenu.node)
+    setFileAction(action)
+    setEntryName(action === 'rename' ? contextMenu.node.name : '')
+    setMutationError('')
+    setContextMenu(null)
+  }
+
+  const inlineEntry =
+    fileMenu && fileAction !== 'delete' ? (
+      <div
+        className="tree-inline-entry"
+        onClick={(event) => event.stopPropagation()}
+        onContextMenu={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+        }}
+      >
+        <input
+          aria-label={
+            fileAction === 'rename'
+              ? 'Новое имя'
+              : fileAction === 'create-file'
+                ? 'Имя нового файла'
+                : 'Имя новой папки'
+          }
+          autoFocus
+          value={entryName}
+          disabled={mutationBusy || parentBlocked}
+          onFocus={(event) => event.currentTarget.select()}
+          onChange={(event) => {
+            setEntryName(event.target.value)
+            setMutationError('')
+          }}
+          onKeyDown={(event) => {
+            event.stopPropagation()
+            if (event.key === 'Enter' && entryName) {
+              event.preventDefault()
+              void mutateEntry()
+            }
+            if (event.key === 'Escape' && !mutationBusy) {
+              event.preventDefault()
+              setFileMenu(null)
+            }
+          }}
+        />
+        {mutationError && <small role="alert">{mutationError}</small>}
+        <small>Enter — сохранить · Esc — отмена</small>
+      </div>
+    ) : null
+  const renderEntry = (node: ProjectTreeNode, position: 'name' | 'children'): React.ReactNode => {
+    if (!fileMenu || node.relativePath !== fileMenu.relativePath) return null
+    if (position === 'name' && fileAction === 'rename') return inlineEntry
+    if (position === 'children' && fileAction.startsWith('create-')) return inlineEntry
+    return null
+  }
+
   return (
     <div className="code-editor-page">
       {operationError && (
@@ -538,10 +697,17 @@ function CodeEditorPage({
       </div>
 
       <div className="code-editor-layout">
-        <aside className="project-tree">
+        <aside
+          className="project-tree"
+          onContextMenu={(event) => {
+            event.preventDefault()
+            manage({ name: '', relativePath: '', type: 'directory' }, event.clientX, event.clientY)
+          }}
+        >
           <div className="project-tree-title">PROJECT</div>
 
           <div className="project-tree-content">
+            {fileMenu?.relativePath === '' && inlineEntry}
             {!projectPath && <div className="project-tree-empty">Open a project first</div>}
 
             {projectPath && treeLoading && (
@@ -558,6 +724,8 @@ function CodeEditorPage({
                   node={node}
                   activeFilePath={activeFilePath ?? undefined}
                   onOpenFile={handleOpenFile}
+                  onManage={manage}
+                  renderEntry={renderEntry}
                 />
               ))}
           </div>
@@ -664,6 +832,112 @@ function CodeEditorPage({
         <button type="button">Monitor</button>
       </div>
 
+      {contextMenu && isActive && !parentBlocked && (
+        <div
+          className="tree-menu-backdrop"
+          onPointerDown={() => setContextMenu(null)}
+          onContextMenu={(event) => {
+            event.preventDefault()
+            setContextMenu(null)
+          }}
+        >
+          <div
+            className="recent-project-menu"
+            role="menu"
+            aria-label="Действия с файлами"
+            style={{
+              left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 230)),
+              top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - 190))
+            }}
+            onPointerDown={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape' || event.key === 'Tab') {
+                event.preventDefault()
+                setContextMenu(null)
+              }
+              if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                event.preventDefault()
+                const buttons = Array.from(
+                  event.currentTarget.querySelectorAll<HTMLButtonElement>('button')
+                )
+                const index = buttons.indexOf(document.activeElement as HTMLButtonElement)
+                buttons[
+                  (index + (event.key === 'ArrowDown' ? 1 : buttons.length - 1)) % buttons.length
+                ]?.focus()
+              }
+            }}
+          >
+            {contextMenu.node.type === 'directory' && (
+              <>
+                <button
+                  type="button"
+                  role="menuitem"
+                  autoFocus
+                  onClick={() => beginAction('create-file')}
+                >
+                  Новый файл
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => beginAction('create-directory')}
+                >
+                  Новая папка
+                </button>
+              </>
+            )}
+            {contextMenu.node.relativePath && (
+              <>
+                <button
+                  type="button"
+                  role="menuitem"
+                  autoFocus={contextMenu.node.type === 'file'}
+                  onClick={() => beginAction('rename')}
+                >
+                  Переименовать
+                </button>
+                <button type="button" role="menuitem" onClick={() => beginAction('delete')}>
+                  Удалить в корзину
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+      {fileMenu && fileAction === 'delete' && (
+        <div className="editor-confirm-overlay">
+          <div
+            className="editor-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Действия с файлами"
+            onKeyDown={(event) => {
+              if (event.key === 'Escape' && !mutationBusy) setFileMenu(null)
+            }}
+          >
+            <h3>{fileMenu.relativePath || 'Корень проекта'}</h3>
+            <p>
+              Переместить «{fileMenu.name}» в корзину Windows? Папка будет перемещена со всем
+              содержимым.
+            </p>
+            {mutationError && <p role="alert">{mutationError}</p>}
+            <div className="editor-confirm-actions">
+              <button type="button" disabled={mutationBusy} onClick={() => setFileMenu(null)}>
+                Отмена
+              </button>
+              <button
+                type="button"
+                disabled={mutationBusy || parentBlocked || (fileAction !== 'delete' && !entryName)}
+                onClick={() => {
+                  void mutateEntry()
+                }}
+              >
+                {mutationBusy ? 'Выполнение…' : 'Подтвердить удаление'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {pendingClosePath && (
         <div className="editor-confirm-overlay">
           <div className="editor-confirm-dialog">
