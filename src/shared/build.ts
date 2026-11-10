@@ -4,7 +4,8 @@ export interface BuildState {
   baud?: number
   operation?: 'build' | 'flash'
   port?: string
-  status: 'idle' | 'running' | 'success' | 'error'
+  status: 'idle' | 'running' | 'success' | 'error' | 'cancelled'
+  stopping?: boolean
   projectPath: string
   target: string
   log: string
@@ -33,5 +34,6 @@ export const buildLabels = {
   idle: 'Не собирался',
   running: 'Сборка…',
   success: 'Успешно',
-  error: 'Ошибка'
+  error: 'Ошибка',
+  cancelled: 'Остановлено'
 }

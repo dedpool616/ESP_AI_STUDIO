@@ -5,6 +5,7 @@ import type { EnvironmentResult, CheckTarget } from '../shared/environment'
 import type { BuildState, BuildResult, PortsResult } from '../shared/build'
 import type { MonitorState } from '../shared/monitor'
 import type { FileMutation, FileMutationResult } from '../shared/projectFiles'
+import type { SaveProjectSettings, ProjectSettingsResult } from '../shared/projectSettings'
 
 interface CreateProjectOptions {
   projectName: string
@@ -15,6 +16,11 @@ interface CreateProjectOptions {
 }
 
 const api = {
+  stopBuild: (): Promise<BuildResult> => ipcRenderer.invoke('build:stop'),
+  getProjectSettings: (path: string): Promise<ProjectSettingsResult> =>
+    ipcRenderer.invoke('project:settings', path),
+  saveProjectSettings: (request: SaveProjectSettings): Promise<ProjectSettingsResult> =>
+    ipcRenderer.invoke('project:save-settings', request),
   mutateProjectFile: (request: FileMutation): Promise<FileMutationResult> =>
     ipcRenderer.invoke('project:mutate', request),
   getMonitorState: (): Promise<MonitorState> => ipcRenderer.invoke('monitor:state'),

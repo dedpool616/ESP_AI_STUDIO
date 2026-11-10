@@ -11,6 +11,7 @@ function fixture() {
   const files = new Map()
   const handlers = new Map()
   const calls = []
+  const termination = { calls: [], fail: false }
   let child
   const report = {
     idf: { path: 'C:\\sdk', version: '6.1' },
@@ -34,6 +35,7 @@ function fixture() {
     Buffer,
     Date,
     Error,
+    process: { platform: 'win32', env: { SystemRoot: 'C:\\Windows' } },
     require(name) {
       if (name === 'path') return path.win32
       if (name === 'fs/promises')
@@ -58,11 +60,18 @@ function fixture() {
           execFile(executable, args, options, callback) {
             assert.equal(options.shell, false)
             assert.equal(options.windowsHide, true)
+            if (args.includes('/PID')) {
+              termination.calls.push({ executable, args })
+              callback(termination.fail ? new Error('access denied') : null)
+              return
+            }
             callback(null, JSON.stringify([{ device: 'COM3', description: 'USB serial' }]))
           },
           spawn(executable, args, options) {
             calls.push({ executable, args, options })
             child = new EventEmitter()
+            child.pid = 12345
+            child.exitCode = null
             child.stdout = new EventEmitter()
             child.stderr = new EventEmitter()
             child.kill = () => child.emit('close', null)
@@ -79,6 +88,8 @@ function fixture() {
   return {
     files,
     calls,
+    termination,
+    stop: () => handlers.get('build:stop')(),
     report,
     api: module.exports,
     monitorStart: (baud = 115200) => handlers.get('monitor:start')({}, 'esp32s3', 'COM3', baud),
@@ -95,6 +106,46 @@ function fixture() {
   }
 }
 const settle = () => new Promise((resolve) => setImmediate(resolve))
+
+test('stop during preparation prevents spawn and permits a new build', async () => {
+  const f = fixture()
+  f.start()
+  assert.equal((await f.stop()).success, true)
+  await settle()
+  assert.equal(f.state().status, 'cancelled')
+  assert.equal(f.calls.length, 0)
+  assert.equal(f.start().success, true)
+})
+
+test('stop terminates the fixed PID process tree, waits for close and marks cancellation', async () => {
+  const f = fixture()
+  f.start()
+  await settle()
+  await f.stop()
+  assert.equal(f.termination.calls[0].executable, 'C:\\Windows\\System32\\taskkill.exe')
+  assert.equal(f.termination.calls[0].args.join(' '), '/PID 12345 /T /F')
+  assert.equal(f.state().status, 'running')
+  assert.equal(f.start().success, false)
+  f.child().emit('close', 1)
+  await settle()
+  assert.equal(f.state().status, 'cancelled')
+  assert.equal(f.state().stopping, false)
+})
+
+test('failed process termination keeps operation active and permits retry', async () => {
+  const f = fixture()
+  f.start()
+  await settle()
+  f.termination.fail = true
+  assert.equal((await f.stop()).success, false)
+  assert.equal(f.state().status, 'running')
+  assert.equal(f.state().stopping, false)
+  f.termination.fail = false
+  assert.equal((await f.stop()).success, true)
+  f.child().emit('close', 1)
+  await settle()
+  assert.equal(f.state().status, 'cancelled')
+})
 
 test('flash validates baud and passes selected speed to idf.py', async () => {
   const f = fixture()

@@ -30,6 +30,7 @@ export default function BuildPanel({
   const [error, setError] = useState('')
   const [confirm, setConfirm] = useState(false)
   const [flashBaud, setFlashBaud] = useState(460800)
+  const [stopping, setStopping] = useState(false)
   const diagnostics = parseBuildDiagnostics(state?.log ?? '', state?.projectPath ?? '')
   const refresh = async (): Promise<void> => {
     if (loading) return
@@ -73,6 +74,34 @@ export default function BuildPanel({
       >
         Собрать проект
       </button>
+      {state?.status === 'running' && (
+        <>
+          <button
+            type="button"
+            className="monitor-red-button"
+            disabled={stopping || state.stopping}
+            onClick={() => {
+              setStopping(true)
+              setError('')
+              void window.api
+                .stopBuild()
+                .then((result) => {
+                  if (!result.success) setError(result.error ?? 'Ошибка остановки.')
+                })
+                .catch(() => setError('Не удалось отправить запрос остановки.'))
+                .finally(() => setStopping(false))
+            }}
+          >
+            {stopping || state.stopping ? 'Остановка…' : 'Остановить'}
+          </button>
+          {state.operation === 'flash' && (
+            <p>
+              После прерывания прошивки программа на плате может быть записана не полностью.
+              Потребуется повторная прошивка.
+            </p>
+          )}
+        </>
+      )}
       <div className="flash-controls">
         <h3>Прошивка платы</h3>
         <label>

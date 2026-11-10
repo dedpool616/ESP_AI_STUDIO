@@ -435,6 +435,7 @@ function mainHost(fsApi = require('node:fs/promises'), userData = 'unused') {
     (name) => {
       if (name === './environmentIpc') return { registerEnvironmentHandlers() {} }
       if (name === './projectFiles') return { registerProjectFileHandlers() {} }
+      if (name === './projectSettings') return { registerProjectSettings() {} }
       if (name === './projectBuild')
         return { registerBuildHandlers() {}, isBuildRunning: () => false, stopMonitor() {} }
       if (name === 'electron')
@@ -520,6 +521,8 @@ test('App keeps drafts on switching and refuses to close after failed session pe
       if (name.includes('CodeEditorPage')) return { default: Editor }
       if (name.includes('EnvironmentPage')) return { default: function EnvironmentPage() {} }
       if (name.includes('MonitorPage')) return { default: function MonitorPage() {} }
+      if (name.includes('ProjectSettingsPage'))
+        return { default: function ProjectSettingsPage() {} }
       if (name.includes('BuildPanel'))
         return { default: function BuildPanel() {}, buildLabels: { idle: 'Не собирался' } }
       if (name.includes('ProjectUnavailableDialog'))

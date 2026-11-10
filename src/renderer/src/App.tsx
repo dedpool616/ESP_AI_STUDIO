@@ -4,6 +4,7 @@ import ProjectUnavailableDialog from './components/ProjectUnavailableDialog'
 import RecentProjectMenu from './components/RecentProjectMenu'
 import EnvironmentPage from './pages/EnvironmentPage'
 import MonitorPage from './pages/MonitorPage'
+import ProjectSettingsPage from './pages/ProjectSettingsPage'
 import BuildPanel from './components/BuildPanel'
 import { buildLabels, type BuildState } from '../../shared/build'
 import type { BuildDiagnostic, EditorLocation } from '../../shared/buildDiagnostics'
@@ -294,7 +295,7 @@ function App(): React.JSX.Element {
 
   const navigation = [
     'Home',
-    ...(currentProject ? ['Dashboard'] : []),
+    ...(currentProject ? ['Dashboard', 'Настройки проекта'] : []),
     'AI',
     'Code Editor',
     'AI + Code',
@@ -833,6 +834,49 @@ function App(): React.JSX.Element {
           )}
           {activePage === 'Monitor' && (
             <MonitorPage target={currentProject?.board ?? ''} blocked={!!buildBusy} />
+          )}
+          {activePage === 'Настройки проекта' && currentProject && (
+            <ProjectSettingsPage
+              key={currentProject.path}
+              path={currentProject.path}
+              board={currentProject.board}
+              blocked={
+                !!buildBusy ||
+                editorSaving ||
+                projectBusy ||
+                hasUnsavedChanges(editorSessions[currentProject.path] ?? emptyEditorSession)
+              }
+              onBusy={setEditorSaving}
+              onSaved={async (backup) => {
+                const result = await window.api.inspectProject(currentProject.path)
+                if (!result.success || !result.project)
+                  throw new Error(result.error ?? 'Не удалось обновить проект.')
+                const updated = result.project
+                setCurrentProject(updated)
+                setRecentProjects((projects) =>
+                  projects.map((project) => (project.path === updated.path ? updated : project))
+                )
+                if (backup)
+                  setEditorSessions((sessions) => {
+                    const session = sessions[updated.path] ?? emptyEditorSession
+                    const openFiles = session.openFiles.filter(
+                      (file) => !['sdkconfig', 'sdkconfig.old'].includes(file.relativePath)
+                    )
+                    return {
+                      ...sessions,
+                      [updated.path]: {
+                        ...session,
+                        openFiles,
+                        activeFilePath: openFiles.some(
+                          (file) => file.relativePath === session.activeFilePath
+                        )
+                          ? session.activeFilePath
+                          : (openFiles[0]?.relativePath ?? null)
+                      }
+                    }
+                  })
+              }}
+            />
           )}
           <div className={`code-editor-keep-alive ${activePage === 'Code Editor' ? 'active' : ''}`}>
             <CodeEditorPage

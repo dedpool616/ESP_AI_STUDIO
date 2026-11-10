@@ -1,5 +1,5 @@
 import type { IpcMain } from 'electron'
-import { spawn, execFile } from 'child_process'
+import { spawn, execFile, type ChildProcess } from 'child_process'
 import { readFile, stat, realpath } from 'fs/promises'
 import { dirname, isAbsolute, join, delimiter } from 'path'
 import { StringDecoder } from 'string_decoder'
@@ -49,6 +49,12 @@ finally:
 `
 
 let state: BuildState = { status: 'idle', projectPath: '', target: '', log: '' }
+let buildChild: ChildProcess | undefined
+let stopRequested = false
+
+function checkStopped(): void {
+  if (stopRequested) throw new Error('Операция остановлена пользователем.')
+}
 export function isBuildRunning(): boolean {
   return state.status === 'running'
 }
@@ -157,9 +163,17 @@ export async function validateBuildProject(
 }
 
 export function registerBuildHandlers(ipc: Pick<IpcMain, 'handle'>, userDataPath: string): void {
-  const environment = async (target: CheckTarget): Promise<EnvironmentReport> => {
+  const environment = async (
+    target: CheckTarget,
+    projectPath?: string
+  ): Promise<EnvironmentReport> => {
     const settings = await optionalRead(join(userDataPath, 'environment-settings.json'))
-    const selected = settings ? JSON.parse(settings).idfPath : null
+    const projectSettings = projectPath
+      ? await optionalRead(join(projectPath, '.espai/project.json'))
+      : null
+    const selected =
+      (projectSettings ? JSON.parse(projectSettings).idfPath : null) ??
+      (settings ? JSON.parse(settings).idfPath : null)
     if (selected !== null && (typeof selected !== 'string' || !isAbsolute(selected)))
       throw new Error('Некорректный путь SDK в настройках.')
     const report = await checkEnvironment(selected, target)
@@ -314,6 +328,48 @@ export function registerBuildHandlers(ipc: Pick<IpcMain, 'handle'>, userDataPath
         })
   )
   ipc.handle('build:state', () => ({ ...state }))
+  ipc.handle('build:stop', async (): Promise<BuildResult> => {
+    if (!isBuildRunning())
+      return { success: false, error: 'Нет выполняющейся операции.', state: { ...state } }
+    if (state.stopping) return { success: true, state: { ...state } }
+    const stoppingState = state
+    stopRequested = true
+    state.stopping = true
+    state.error = undefined
+    append('\nЗапрошена остановка операции…\n')
+    const child = buildChild
+    if (child?.pid && child.exitCode === null) {
+      try {
+        if (process.platform !== 'win32')
+          throw new Error('Остановка дерева процессов поддерживается только в Windows.')
+        await new Promise<void>((resolve, reject) => {
+          execFile(
+            join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'taskkill.exe'),
+            ['/PID', String(child.pid), '/T', '/F'],
+            { windowsHide: true, shell: false, timeout: 10000, maxBuffer: 65536 },
+            (error) => {
+              if (error && child.exitCode === null)
+                reject(new Error('Не удалось завершить дерево процессов. Повторите остановку.'))
+              else resolve()
+            }
+          )
+        })
+      } catch (error) {
+        if (state === stoppingState && isBuildRunning()) {
+          state.stopping = false
+          stopRequested = false
+          state.error = error instanceof Error ? error.message : 'Ошибка остановки.'
+          append(`\n${state.error}\n`)
+        }
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Ошибка остановки.',
+          state: { ...state }
+        }
+      }
+    }
+    return { success: true, state: { ...state } }
+  })
   const start = (
     projectPath: unknown,
     target: unknown,
@@ -343,6 +399,8 @@ export function registerBuildHandlers(ipc: Pick<IpcMain, 'handle'>, userDataPath
         error: 'Выберите поддерживаемую скорость прошивки.',
         state: { ...state }
       }
+    stopRequested = false
+    buildChild = undefined
     state = {
       ...(operation === 'flash' ? { baud: baud as number } : {}),
       operation,
@@ -356,7 +414,9 @@ export function registerBuildHandlers(ipc: Pick<IpcMain, 'handle'>, userDataPath
     void (async () => {
       try {
         await validateBuildProject(projectPath, target)
-        const report = await environment(target)
+        checkStopped()
+        const report = await environment(target, projectPath)
+        checkStopped()
         if (operation === 'flash') {
           const description = JSON.parse(
             (await optionalRead(join(projectPath, 'build/project_description.json'))) ?? '{}'
@@ -380,6 +440,7 @@ export function registerBuildHandlers(ipc: Pick<IpcMain, 'handle'>, userDataPath
         }
         const python = report.tools.find((tool) => tool.name === 'python')!.path!
         const env = await prepareBuildEnvironment(report, target)
+        checkStopped()
         append(
           `ESP-IDF ${report.idf.version}; плата ${target}\nПроект: ${projectPath}\nСборка файлов с диска. Внешние компоненты отключены.\n`
         )
@@ -409,28 +470,41 @@ export function registerBuildHandlers(ipc: Pick<IpcMain, 'handle'>, userDataPath
               stdio: ['ignore', 'pipe', 'pipe']
             }
           )
+          buildChild = child
+          let spawnError: Error | undefined
           const stdout = new StringDecoder('utf8'),
             stderr = new StringDecoder('utf8')
           child.stdout.on('data', (chunk: Buffer) => append(stdout.write(chunk)))
           child.stderr.on('data', (chunk: Buffer) => append(stderr.write(chunk)))
-          child.on('error', reject)
+          child.on('error', (error) => {
+            spawnError = error
+          })
           child.on('close', (code) => {
             append(stdout.end() + stderr.end())
-            if (code === 0) resolve()
+            if (spawnError) reject(spawnError)
+            else if (code === 0) resolve()
             else reject(new Error(`Операция завершилась с кодом ${code}. См. журнал.`))
           })
         })
+        checkStopped()
         state.status = 'success'
+        state.error = undefined
         append(
           operation === 'flash'
             ? '\nПрошивка завершена успешно.\n'
             : '\nСборка завершена успешно. Результаты находятся в папке build проекта.\n'
         )
       } catch (error) {
-        state.status = 'error'
-        state.error = error instanceof Error ? error.message : 'Ошибка сборки.'
-        append(`\n${state.error}\n`)
+        state.status = stopRequested ? 'cancelled' : 'error'
+        state.error = stopRequested
+          ? undefined
+          : error instanceof Error
+            ? error.message
+            : 'Ошибка сборки.'
+        append(stopRequested ? '\nОперация остановлена пользователем.\n' : `\n${state.error}\n`)
       } finally {
+        buildChild = undefined
+        state.stopping = false
         state.finishedAt = new Date().toISOString()
       }
     })()

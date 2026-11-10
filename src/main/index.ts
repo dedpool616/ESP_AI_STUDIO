@@ -8,6 +8,7 @@ import icon from '../../resources/icon.png?asset'
 import { parseEditorSessions, type EditorSessions } from '../shared/editorSession'
 import { registerEnvironmentHandlers } from './environmentIpc'
 import { registerProjectFileHandlers } from './projectFiles'
+import { registerProjectSettings } from './projectSettings'
 import { registerBuildHandlers, isBuildRunning, stopMonitor } from './projectBuild'
 
 const execFileAsync = promisify(execFile)
@@ -225,6 +226,7 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  registerProjectSettings(ipcMain, isBuildRunning)
   registerProjectFileHandlers(ipcMain, (path) => shell.trashItem(path), isBuildRunning)
   registerBuildHandlers(ipcMain, app.getPath('userData'))
   registerEnvironmentHandlers(ipcMain, app.getPath('userData'), async () => {

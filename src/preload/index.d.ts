@@ -4,6 +4,7 @@ import type { EnvironmentResult, CheckTarget } from '../shared/environment'
 import type { BuildState, BuildResult, PortsResult } from '../shared/build'
 import type { MonitorState } from '../shared/monitor'
 import type { FileMutation, FileMutationResult } from '../shared/projectFiles'
+import type { SaveProjectSettings, ProjectSettingsResult } from '../shared/projectSettings'
 
 interface ProjectTreeNode {
   name: string
@@ -79,6 +80,9 @@ interface SaveAppStateResult {
 }
 
 interface ESPAIStudioAPI {
+  stopBuild: () => Promise<BuildResult>
+  getProjectSettings: (path: string) => Promise<ProjectSettingsResult>
+  saveProjectSettings: (request: SaveProjectSettings) => Promise<ProjectSettingsResult>
   mutateProjectFile: (request: FileMutation) => Promise<FileMutationResult>
   getMonitorState: () => Promise<MonitorState>
   startMonitor: (
