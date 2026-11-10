@@ -5,6 +5,7 @@ import RecentProjectMenu from './components/RecentProjectMenu'
 import EnvironmentPage from './pages/EnvironmentPage'
 import MonitorPage from './pages/MonitorPage'
 import ProjectSettingsPage from './pages/ProjectSettingsPage'
+import ProjectSearchPage from './pages/ProjectSearchPage'
 import BuildPanel from './components/BuildPanel'
 import { buildLabels, type BuildState } from '../../shared/build'
 import type { BuildDiagnostic, EditorLocation } from '../../shared/buildDiagnostics'
@@ -108,7 +109,9 @@ function App(): React.JSX.Element {
       setBuildStarting(false)
     }
   }
-  const openDiagnostic = async (diagnostic: BuildDiagnostic): Promise<void> => {
+  const openDiagnostic = async (
+    diagnostic: Pick<BuildDiagnostic, 'relativePath' | 'line' | 'column'>
+  ): Promise<void> => {
     if (!currentProject || !diagnostic.relativePath || buildBusy || editorSaving) return
     const project = currentProject.path
     const request = ++diagnosticRequest.current
@@ -295,7 +298,7 @@ function App(): React.JSX.Element {
 
   const navigation = [
     'Home',
-    ...(currentProject ? ['Dashboard', 'Настройки проекта'] : []),
+    ...(currentProject ? ['Dashboard', 'Поиск по проекту', 'Настройки проекта'] : []),
     'AI',
     'Code Editor',
     'AI + Code',
@@ -877,6 +880,29 @@ function App(): React.JSX.Element {
                   })
               }}
             />
+          )}
+          {currentProject && (
+            <div hidden={activePage !== 'Поиск по проекту'}>
+              <ProjectSearchPage
+                active={activePage === 'Поиск по проекту'}
+                key={currentProject.path}
+                projectPath={currentProject.path}
+                blocked={
+                  !!buildBusy ||
+                  editorSaving ||
+                  projectBusy ||
+                  closeRequested ||
+                  closing ||
+                  !!pendingProject ||
+                  closeProjectRequested ||
+                  !!unavailableProject ||
+                  showNewProject
+                }
+                onOpen={(match) => {
+                  void openDiagnostic(match)
+                }}
+              />
+            </div>
           )}
           <div className={`code-editor-keep-alive ${activePage === 'Code Editor' ? 'active' : ''}`}>
             <CodeEditorPage

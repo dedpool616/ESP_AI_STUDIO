@@ -5,6 +5,7 @@ import type { BuildState, BuildResult, PortsResult } from '../shared/build'
 import type { MonitorState } from '../shared/monitor'
 import type { FileMutation, FileMutationResult } from '../shared/projectFiles'
 import type { SaveProjectSettings, ProjectSettingsResult } from '../shared/projectSettings'
+import type { SearchRequest, SearchResult } from '../shared/projectSearch'
 
 interface ProjectTreeNode {
   name: string
@@ -80,6 +81,7 @@ interface SaveAppStateResult {
 }
 
 interface ESPAIStudioAPI {
+  searchProject: (request: SearchRequest) => Promise<SearchResult>
   stopBuild: () => Promise<BuildResult>
   getProjectSettings: (path: string) => Promise<ProjectSettingsResult>
   saveProjectSettings: (request: SaveProjectSettings) => Promise<ProjectSettingsResult>

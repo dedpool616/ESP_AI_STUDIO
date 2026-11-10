@@ -9,6 +9,7 @@ import { parseEditorSessions, type EditorSessions } from '../shared/editorSessio
 import { registerEnvironmentHandlers } from './environmentIpc'
 import { registerProjectFileHandlers } from './projectFiles'
 import { registerProjectSettings } from './projectSettings'
+import { registerProjectSearch } from './projectSearch'
 import { registerBuildHandlers, isBuildRunning, stopMonitor } from './projectBuild'
 
 const execFileAsync = promisify(execFile)
@@ -226,6 +227,7 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  registerProjectSearch(ipcMain)
   registerProjectSettings(ipcMain, isBuildRunning)
   registerProjectFileHandlers(ipcMain, (path) => shell.trashItem(path), isBuildRunning)
   registerBuildHandlers(ipcMain, app.getPath('userData'))

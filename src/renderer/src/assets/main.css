@@ -1356,3 +1356,55 @@ button {
   color: #aaa;
   font-size: 11px;
 }
+.project-search-form {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 20px 0;
+}
+
+.project-search-form label:first-child {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 280px;
+  gap: 8px;
+}
+
+.project-search-form input[type='search'] {
+  background: #171b22;
+  color: #fff;
+  border: 1px solid #566171;
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.project-search-results {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.project-search-result {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  background: #171b22;
+  color: #ddd;
+  padding: 12px;
+  border: 1px solid #343b47;
+  border-radius: 6px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.project-search-result strong {
+  color: #79bbff;
+}
+.project-search-result code {
+  white-space: pre-wrap;
+}
+.project-search-result:hover:not(:disabled) {
+  background: #252d39;
+}
