@@ -543,6 +543,14 @@ function mainHost(fsApi = require('node:fs/promises'), userData = 'unused') {
       if (name === './projectSettings') return { registerProjectSettings() {} }
       if (name === './projectSearch') return { registerProjectSearch() {} }
       if (name === './checkedSave') return { checkedSave: async () => ({ success: true }) }
+      if (name === './activity')
+        return {
+          createActivityStore: () => ({
+            record: async () => {},
+            list: async () => ({ success: true, entries: [] })
+          }),
+          activityIpc: (ipc) => ipc
+        }
       if (name === './projectBuild')
         return { registerBuildHandlers() {}, isBuildRunning: () => false, stopMonitor() {} }
       if (name === 'electron')
@@ -632,6 +640,7 @@ test('App keeps drafts on switching and refuses to close after failed session pe
         return { default: function ProjectSettingsPage() {} }
       if (name.includes('ProjectSearchPage')) return { default: function ProjectSearchPage() {} }
       if (name.includes('QuickOpen')) return { default: function QuickOpen() {} }
+      if (name.includes('ActivityPage')) return { default: function ActivityPage() {} }
       if (name.includes('BuildPanel'))
         return { default: function BuildPanel() {}, buildLabels: { idle: 'Не собирался' } }
       if (name.includes('ProjectUnavailableDialog'))

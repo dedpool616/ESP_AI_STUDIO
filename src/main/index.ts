@@ -11,9 +11,11 @@ import { registerProjectFileHandlers } from './projectFiles'
 import { registerProjectSettings } from './projectSettings'
 import { registerProjectSearch } from './projectSearch'
 import { checkedSave } from './checkedSave'
+import { createActivityStore, activityIpc } from './activity'
 import { registerBuildHandlers, isBuildRunning, stopMonitor } from './projectBuild'
 
 const execFileAsync = promisify(execFile)
+let flushActivity: (() => Promise<void>) | undefined
 
 interface StoredProjectInfo {
   name: string
@@ -191,9 +193,10 @@ function createWindow(): void {
   })
 
   let closeAllowed = false
-  const confirmClose = (event: Electron.IpcMainEvent): void => {
+  const confirmClose = async (event: Electron.IpcMainEvent): Promise<void> => {
     if (event.sender !== mainWindow.webContents) return
     if (isBuildRunning()) return
+    if (flushActivity) await flushActivity()
     closeAllowed = true
     stopMonitor()
     mainWindow.close()
@@ -228,10 +231,26 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
-  registerProjectSearch(ipcMain)
-  registerProjectSettings(ipcMain, isBuildRunning)
-  registerProjectFileHandlers(ipcMain, (path) => shell.trashItem(path), isBuildRunning)
-  registerBuildHandlers(ipcMain, app.getPath('userData'))
+  const activity = createActivityStore(app.getPath('userData'))
+  flushActivity = activity.flush
+  const projectIpc = activityIpc(ipcMain, activity.record)
+  ipcMain.handle('activity:list', (_, projectPath?: string) => activity.list(projectPath))
+  registerProjectSearch(projectIpc)
+  registerProjectSettings(projectIpc, isBuildRunning)
+  registerProjectFileHandlers(projectIpc, (path) => shell.trashItem(path), isBuildRunning)
+  registerBuildHandlers(projectIpc, app.getPath('userData'), (result) => {
+    void activity.record({
+      projectPath: result.projectPath,
+      action: result.operation === 'flash' ? 'Результат прошивки' : 'Результат сборки',
+      status:
+        result.status === 'success'
+          ? 'success'
+          : result.status === 'cancelled'
+            ? 'cancelled'
+            : 'error',
+      message: result.error
+    })
+  })
   registerEnvironmentHandlers(ipcMain, app.getPath('userData'), async () => {
     const result = await dialog.showOpenDialog({
       title: 'Выберите папку ESP-IDF SDK',
@@ -451,7 +470,7 @@ app.whenReady().then(() => {
   }
 
   ipcMain.handle('project:inspect', (_, projectPath: string) => inspectProject(projectPath))
-  ipcMain.handle('project:open', async () => {
+  projectIpc.handle('project:open', async () => {
     try {
       const result = await dialog.showOpenDialog({
         title: 'Open ESP-IDF Project',
@@ -472,7 +491,7 @@ app.whenReady().then(() => {
   /*
    * Create ESP-IDF project
    */
-  ipcMain.handle(
+  projectIpc.handle(
     'project:create',
     async (_, request: CreateProjectRequest): Promise<CreateProjectResult> => {
       try {
@@ -668,7 +687,7 @@ sdkconfig.old
   /*
    * Save project file
    */
-  ipcMain.handle(
+  projectIpc.handle(
     'project:save-file',
     async (
       _,

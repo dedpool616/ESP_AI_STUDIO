@@ -7,6 +7,7 @@ import MonitorPage from './pages/MonitorPage'
 import ProjectSettingsPage from './pages/ProjectSettingsPage'
 import ProjectSearchPage from './pages/ProjectSearchPage'
 import QuickOpen from './components/QuickOpen'
+import ActivityPage from './pages/ActivityPage'
 import BuildPanel from './components/BuildPanel'
 import { buildLabels, type BuildState } from '../../shared/build'
 import type { BuildDiagnostic, EditorLocation } from '../../shared/buildDiagnostics'
@@ -880,6 +881,9 @@ function App(): React.JSX.Element {
           )}
           {activePage === 'Monitor' && (
             <MonitorPage target={currentProject?.board ?? ''} blocked={!!buildBusy} />
+          )}
+          {activePage === 'Activity' && (
+            <ActivityPage key={currentProject?.path ?? 'all'} projectPath={currentProject?.path} />
           )}
           {activePage === 'Настройки проекта' && currentProject && (
             <ProjectSettingsPage

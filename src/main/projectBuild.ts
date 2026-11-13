@@ -162,7 +162,11 @@ export async function validateBuildProject(
   }
 }
 
-export function registerBuildHandlers(ipc: Pick<IpcMain, 'handle'>, userDataPath: string): void {
+export function registerBuildHandlers(
+  ipc: Pick<IpcMain, 'handle'>,
+  userDataPath: string,
+  onFinished?: (result: BuildState) => void
+): void {
   const environment = async (
     target: CheckTarget,
     projectPath?: string
@@ -506,6 +510,7 @@ export function registerBuildHandlers(ipc: Pick<IpcMain, 'handle'>, userDataPath
         buildChild = undefined
         state.stopping = false
         state.finishedAt = new Date().toISOString()
+        onFinished?.({ ...state })
       }
     })()
     return { success: true, state: { ...state } }

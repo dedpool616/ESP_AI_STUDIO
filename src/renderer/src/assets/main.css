@@ -1535,3 +1535,43 @@ button {
   flex: 1;
   min-height: 0;
 }
+.activity-filters {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin: 16px 0;
+}
+.activity-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.activity-entry {
+  background: #191e27;
+  border: 1px solid #353e4e;
+  border-left: 4px solid #507399;
+  border-radius: 6px;
+  padding: 12px;
+  overflow-wrap: anywhere;
+}
+.activity-entry time {
+  color: #aaa;
+  margin-right: 12px;
+}
+.activity-entry span {
+  margin-left: 12px;
+}
+.activity-entry p {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+}
+.activity-success {
+  border-left-color: #198754;
+}
+.activity-error {
+  border-left-color: #dc3545;
+}
+.activity-cancelled {
+  border-left-color: #d39c36;
+}
