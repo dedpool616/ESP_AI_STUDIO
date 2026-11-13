@@ -587,8 +587,36 @@ function CodeEditorPage({
     closeFileImmediately(relativePath)
   }
 
+  const openFind = useCallback(
+    (replace: boolean): void => {
+      if (!isActive || blocked || !activeFilePath) return
+      const editor = editorRef.current
+      const action = editor?.getAction(
+        replace ? 'editor.action.startFindReplaceAction' : 'actions.find'
+      )
+      if (!editor || !action) return
+      editor.focus()
+      void action.run().catch((error: unknown) => {
+        setOperationError(
+          error instanceof Error ? error.message : 'Не удалось открыть поиск в файле.'
+        )
+      })
+    },
+    [isActive, blocked, activeFilePath]
+  )
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.defaultPrevented) return
+      if (isActive && !blocked && event.ctrlKey && !event.altKey && !event.shiftKey) {
+        const find = event.code === 'KeyF' || event.key.toLowerCase() === 'f'
+        const replace = event.code === 'KeyH' || event.key.toLowerCase() === 'h'
+        if (find || replace) {
+          event.preventDefault()
+          openFind(replace)
+          return
+        }
+      }
       if (
         isActive &&
         !blocked &&
@@ -606,7 +634,7 @@ function CodeEditorPage({
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [handleSave, isActive, blocked])
+  }, [handleSave, isActive, blocked, openFind])
 
   const beginAction = (action: FileAction): void => {
     if (!contextMenu) return

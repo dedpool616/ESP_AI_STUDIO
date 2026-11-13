@@ -6,6 +6,7 @@ import EnvironmentPage from './pages/EnvironmentPage'
 import MonitorPage from './pages/MonitorPage'
 import ProjectSettingsPage from './pages/ProjectSettingsPage'
 import ProjectSearchPage from './pages/ProjectSearchPage'
+import QuickOpen from './components/QuickOpen'
 import BuildPanel from './components/BuildPanel'
 import { buildLabels, type BuildState } from '../../shared/build'
 import type { BuildDiagnostic, EditorLocation } from '../../shared/buildDiagnostics'
@@ -53,6 +54,7 @@ function App(): React.JSX.Element {
   const [isAppStateLoaded, setIsAppStateLoaded] = useState(false)
 
   const [activePage, setActivePage] = useState('Home')
+  const [quickOpen, setQuickOpen] = useState(false)
   const [editorSessions, setEditorSessions] = useState<EditorSessions>({})
   const [editorSaving, setEditorSaving] = useState(false)
   const [buildState, setBuildState] = useState<BuildState | null>(null)
@@ -178,6 +180,38 @@ function App(): React.JSX.Element {
   }, [currentProject, recentProjects, editorSessions])
 
   useEffect(() => window.api.onCloseRequested(() => setCloseRequested(true)), [])
+  const quickOpenAllowed =
+    !!currentProject &&
+    isAppStateLoaded &&
+    !buildBusy &&
+    !editorSaving &&
+    !projectBusy &&
+    !closing &&
+    !closeRequested &&
+    !closeProjectRequested &&
+    !pendingProject &&
+    !unavailableProject &&
+    !showNewProject
+  useEffect(() => {
+    const keydown = (event: KeyboardEvent): void => {
+      if (
+        !event.ctrlKey ||
+        event.altKey ||
+        event.shiftKey ||
+        (event.key.toLowerCase() !== 'p' && event.code !== 'KeyP')
+      )
+        return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      if (
+        quickOpenAllowed &&
+        !document.querySelector('[role="dialog"], [role="menu"], .tree-inline-entry')
+      )
+        setQuickOpen(true)
+    }
+    window.addEventListener('keydown', keydown, true)
+    return () => window.removeEventListener('keydown', keydown, true)
+  }, [quickOpenAllowed])
 
   const activateProject = (project: ProjectInfo): void => {
     if (
@@ -624,6 +658,15 @@ function App(): React.JSX.Element {
             </p>
           </div>
 
+          <button
+            type="button"
+            className="build-project-button"
+            disabled={!quickOpenAllowed}
+            onClick={() => setQuickOpen(true)}
+            title="Открыть файл по имени — Ctrl+P"
+          >
+            Открыть файл… Ctrl+P
+          </button>
           <div className="environment-status">
             <span className="status-dot" />
             IDE запущена
@@ -908,6 +951,7 @@ function App(): React.JSX.Element {
             <CodeEditorPage
               locationRequest={editorLocation}
               blocked={
+                quickOpen ||
                 (!!buildBusy && buildState?.projectPath === currentProject?.path) ||
                 closeRequested ||
                 closeProjectRequested ||
@@ -941,6 +985,17 @@ function App(): React.JSX.Element {
         </footer>
       </main>
 
+      {quickOpen && quickOpenAllowed && currentProject && (
+        <QuickOpen
+          key={currentProject.path}
+          projectPath={currentProject.path}
+          onClose={() => setQuickOpen(false)}
+          onOpen={(relativePath) => {
+            setQuickOpen(false)
+            void openDiagnostic({ relativePath, line: 1, column: 1 })
+          }}
+        />
+      )}
       {recentMenu &&
         activePage === 'Home' &&
         !unavailableProject &&

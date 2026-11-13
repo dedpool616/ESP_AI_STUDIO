@@ -6,7 +6,7 @@ const path = require('node:path')
 const os = require('node:os')
 const vm = require('node:vm')
 const ts = require('typescript')
-async function load() {
+async function load(exportName = 'searchProject') {
   const module = { exports: {} }
   vm.runInNewContext(
     ts.transpileModule(
@@ -17,7 +17,7 @@ async function load() {
     ).outputText,
     { module, exports: module.exports, require, Date }
   )
-  return module.exports.searchProject
+  return module.exports[exportName]
 }
 async function fixture(t) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'espai-search-'))
@@ -30,6 +30,7 @@ async function fixture(t) {
   return {
     directory,
     search: await load(),
+    list: await load('listProjectFiles'),
     write: async (name, content) => {
       const full = path.join(directory, name)
       await fs.mkdir(path.dirname(full), { recursive: true })
@@ -90,5 +91,47 @@ test('invalid requests are rejected and results are capped', async (t) => {
   assert.equal(
     (await f.search({ projectPath: 'relative', query: 'hit', caseSensitive: true })).success,
     false
+  )
+})
+
+test('quick open lists only project files outside generated folders and respects editor size limit', async (t) => {
+  const f = await fixture(t)
+  await f.write('main/main.c', 'int value;')
+  await f.write('main/include/header.h', 'int value;')
+  await f.write('build/generated.c', 'generated')
+  await f.write('.espai/project.json', '{}')
+  await f.write('huge.txt', 'x'.repeat(2 * 1024 * 1024 + 1))
+  const result = await f.list(f.directory)
+  assert.equal(result.success, true)
+  assert.deepEqual(Array.from(result.files), [
+    'CMakeLists.txt',
+    'main/include/header.h',
+    'main/main.c'
+  ])
+  assert.equal((await f.list('relative')).success, false)
+})
+
+test('quick open filters paths case-insensitively and ranks exact filenames before path matches', async () => {
+  const module = { exports: {} }
+  vm.runInNewContext(
+    ts.transpileModule(
+      await fs.readFile(path.join(__dirname, '../src/shared/projectSearch.ts'), 'utf8'),
+      {
+        compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS }
+      }
+    ).outputText,
+    { module, exports: module.exports }
+  )
+  const filter = module.exports.filterProjectFiles
+  const files = ['main.c/include/header.h', 'other/my_main.c', 'src/main.cpp', 'main/main.c']
+  assert.equal(filter(files, 'MAIN.C')[0], 'main/main.c')
+  assert.deepEqual(Array.from(filter(files, 'main\\main')), ['main/main.c'])
+  assert.equal(filter(files, 'does-not-exist').length, 0)
+  assert.equal(
+    filter(
+      Array.from({ length: 150 }, (_, i) => `file${i}.c`),
+      ''
+    ).length,
+    100
   )
 })

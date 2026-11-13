@@ -2,7 +2,7 @@ import type { IpcMain } from 'electron'
 import { opendir, lstat, realpath, readFile } from 'fs/promises'
 import { isAbsolute, join, relative, sep } from 'path'
 import { TextDecoder } from 'util'
-import type { SearchRequest, SearchResult } from '../shared/projectSearch'
+import type { SearchRequest, SearchResult, ProjectFileList } from '../shared/projectSearch'
 
 const ignored = new Set([
   '.git',
@@ -145,7 +145,60 @@ export async function searchProject(request: SearchRequest): Promise<SearchResul
   }
 }
 
+export async function listProjectFiles(projectPath: unknown): Promise<ProjectFileList> {
+  const result: ProjectFileList = { success: true, files: [], truncated: false }
+  try {
+    if (typeof projectPath !== 'string' || !isAbsolute(projectPath))
+      throw new Error('Выберите проект.')
+    const root = await realpath(projectPath)
+    if (!(await lstat(join(root, 'CMakeLists.txt'))).isFile())
+      throw new Error('Папка проекта недоступна.')
+    let count = 0
+    const deadline = Date.now() + 5000
+    const walk = async (directory: string, depth: number): Promise<void> => {
+      if (depth > 32) {
+        result.truncated = true
+        return
+      }
+      try {
+        for await (const entry of await opendir(directory)) {
+          if (result.files.length >= 10000 || ++count > 20000 || Date.now() > deadline) {
+            result.truncated = true
+            return
+          }
+          if (ignored.has(entry.name.toLowerCase())) continue
+          try {
+            const candidate = join(directory, entry.name)
+            const info = await lstat(candidate)
+            if (info.isSymbolicLink()) continue
+            const resolved = await realpath(candidate)
+            const local = relative(root, resolved)
+            if (isAbsolute(local) || local === '..' || local.startsWith(`..${sep}`)) continue
+            if (info.isDirectory()) await walk(resolved, depth + 1)
+            else if (info.isFile() && info.size <= 2 * 1024 * 1024)
+              result.files.push(local.replaceAll('\\', '/'))
+          } catch {
+            result.truncated = true
+          }
+        }
+      } catch {
+        result.truncated = true
+      }
+    }
+    await walk(root, 0)
+    result.files.sort()
+    return result
+  } catch (error) {
+    return {
+      ...result,
+      success: false,
+      error: error instanceof Error ? error.message : 'Ошибка списка файлов.'
+    }
+  }
+}
+
 export function registerProjectSearch(ipc: Pick<IpcMain, 'handle'>): void {
+  ipc.handle('project:list-files', (_, projectPath: unknown) => listProjectFiles(projectPath))
   let busy = false
   ipc.handle('project:search', async (_, request: SearchRequest): Promise<SearchResult> => {
     if (busy)

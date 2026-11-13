@@ -525,6 +525,7 @@ test('App keeps drafts on switching and refuses to close after failed session pe
       if (name.includes('ProjectSettingsPage'))
         return { default: function ProjectSettingsPage() {} }
       if (name.includes('ProjectSearchPage')) return { default: function ProjectSearchPage() {} }
+      if (name.includes('QuickOpen')) return { default: function QuickOpen() {} }
       if (name.includes('BuildPanel'))
         return { default: function BuildPanel() {}, buildLabels: { idle: 'Не собирался' } }
       if (name.includes('ProjectUnavailableDialog'))
@@ -578,7 +579,9 @@ test('App keeps drafts on switching and refuses to close after failed session pe
           }
         },
         setTimeout: () => 0,
-        clearTimeout() {}
+        clearTimeout() {},
+        addEventListener() {},
+        removeEventListener() {}
       },
       console,
       Error

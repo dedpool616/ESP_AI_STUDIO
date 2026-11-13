@@ -1408,3 +1408,65 @@ button {
 .project-search-result:hover:not(:disabled) {
   background: #252d39;
 }
+.quick-open-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+  background: #0006;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 64px 16px 16px;
+}
+
+.quick-open-dialog {
+  width: min(640px, 100%);
+  background: #1b2029;
+  color: #eee;
+  border: 1px solid #536078;
+  border-radius: 10px;
+  box-shadow: 0 12px 40px #0008;
+  padding: 16px;
+}
+
+.quick-open-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.quick-open-dialog input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+  margin: 12px 0;
+  background: #11151d;
+  color: #fff;
+  border: 1px solid #79bbff;
+  border-radius: 6px;
+}
+.quick-open-results {
+  max-height: min(400px, 50vh);
+  overflow: auto;
+  margin-bottom: 12px;
+}
+.quick-open-results button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 9px;
+  background: transparent;
+  color: #ddd;
+  border: 0;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.quick-open-results button.selected,
+.quick-open-results button:hover {
+  background: #304567;
+  color: #fff;
+}
+.code-editor-toolbar {
+  flex-wrap: wrap;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}

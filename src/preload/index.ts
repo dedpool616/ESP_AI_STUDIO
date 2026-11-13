@@ -6,7 +6,7 @@ import type { BuildState, BuildResult, PortsResult } from '../shared/build'
 import type { MonitorState } from '../shared/monitor'
 import type { FileMutation, FileMutationResult } from '../shared/projectFiles'
 import type { SaveProjectSettings, ProjectSettingsResult } from '../shared/projectSettings'
-import type { SearchRequest, SearchResult } from '../shared/projectSearch'
+import type { SearchRequest, SearchResult, ProjectFileList } from '../shared/projectSearch'
 
 interface CreateProjectOptions {
   projectName: string
@@ -17,6 +17,8 @@ interface CreateProjectOptions {
 }
 
 const api = {
+  listProjectFiles: (path: string): Promise<ProjectFileList> =>
+    ipcRenderer.invoke('project:list-files', path),
   searchProject: (request: SearchRequest): Promise<SearchResult> =>
     ipcRenderer.invoke('project:search', request),
   stopBuild: (): Promise<BuildResult> => ipcRenderer.invoke('build:stop'),
