@@ -190,8 +190,15 @@ function CodeEditorPage({
   const [entryName, setEntryName] = useState('')
   const [mutationBusy, setMutationBusy] = useState(false)
   const [mutationError, setMutationError] = useState('')
+  const [externalChanges, setExternalChanges] = useState<
+    Record<string, { content?: string | null; error?: string }>
+  >({})
+  const [externalConfirm, setExternalConfirm] = useState<{
+    path: string
+    action: 'reload' | 'overwrite'
+  } | null>(null)
   const [treeRevision, setTreeRevision] = useState(0)
-  const blocked = parentBlocked || !!fileMenu || !!contextMenu || mutationBusy
+  const blocked = parentBlocked || !!fileMenu || !!contextMenu || mutationBusy || !!externalConfirm
   const manage = (node: ProjectTreeNode, x: number, y: number): void => {
     if (!projectPath || parentBlocked || savingRef.current || mutationBusy || fileMenu) return
     setContextMenu({ node, x, y })
@@ -246,10 +253,93 @@ function CodeEditorPage({
   const [fileLoading, setFileLoading] = useState(false)
 
   const [saving, setSaving] = useState(false)
+  const setSavingBusy = useCallback(
+    (busy: boolean): void => {
+      savingRef.current = busy
+      setSaving(busy)
+      onSavingChange(busy)
+    },
+    [onSavingChange]
+  )
 
   const [pendingClosePath, setPendingClosePath] = useState<string | null>(null)
 
   const activeFile = openFiles.find((file) => file.relativePath === activeFilePath) ?? null
+  const diskSnapshot = useRef({ projectPath, openFiles, allowed: false })
+  useLayoutEffect(() => {
+    diskSnapshot.current = {
+      projectPath,
+      openFiles,
+      allowed: !parentBlocked && !fileMenu && !mutationBusy && !externalConfirm && !saving
+    }
+  }, [projectPath, openFiles, parentBlocked, fileMenu, mutationBusy, externalConfirm, saving])
+  useEffect(() => {
+    if (!projectPath || !isActive) return
+    let cancelled = false
+    let timer: number | undefined
+    const poll = async (): Promise<void> => {
+      const snapshot = diskSnapshot.current
+      const requestGeneration = generation.current
+      if (snapshot.projectPath === projectPath && snapshot.allowed) {
+        for (const file of snapshot.openFiles) {
+          if (
+            cancelled ||
+            !diskSnapshot.current.allowed ||
+            requestGeneration !== generation.current
+          )
+            break
+          try {
+            const result = await window.api.readProjectFile(projectPath, file.relativePath)
+            if (
+              cancelled ||
+              !diskSnapshot.current.allowed ||
+              requestGeneration !== generation.current ||
+              diskSnapshot.current.projectPath !== projectPath
+            )
+              break
+            const latest = diskSnapshot.current.openFiles.find(
+              (entry) => entry.relativePath === file.relativePath
+            )
+            if (!latest || latest.savedContent !== file.savedContent) continue
+            const key = `${projectPath}\u0000${file.relativePath}`
+            const content = result.success
+              ? (result.content ?? '')
+              : result.missing
+                ? null
+                : undefined
+            setExternalChanges((changes) => {
+              if (result.success && content === latest.savedContent) {
+                if (!(key in changes)) return changes
+                const next = { ...changes }
+                delete next[key]
+                return next
+              }
+              const error =
+                result.success || result.missing ? undefined : (result.error ?? 'Файл недоступен.')
+              if (
+                changes[key]?.content === content &&
+                changes[key]?.error === error &&
+                key in changes
+              )
+                return changes
+              return { ...changes, [key]: { content, error } }
+            })
+          } catch {
+            /* The next check retries transient IPC failures. */
+          }
+        }
+      }
+      if (!cancelled)
+        timer = window.setTimeout(() => {
+          void poll()
+        }, 2500)
+    }
+    void poll()
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [projectPath, isActive])
   const revealLocation = useCallback((): void => {
     const editor = editorRef.current
     if (
@@ -297,6 +387,7 @@ function CodeEditorPage({
     let cancelled = false
 
     const loadTree = async (): Promise<void> => {
+      setExternalConfirm(null)
       setFileMenu(null)
       setContextMenu(null)
       setFileLoading(false)
@@ -477,20 +568,34 @@ function CodeEditorPage({
   }
 
   const saveFiles = useCallback(
-    async (files: OpenFile[]): Promise<void> => {
-      if (!projectPath || savingRef.current || blocked) {
+    async (
+      files: OpenFile[],
+      override?: { path: string; expected: string | null }
+    ): Promise<void> => {
+      if (
+        !projectPath ||
+        savingRef.current ||
+        parentBlocked ||
+        fileMenu ||
+        mutationBusy ||
+        (blocked && !override)
+      ) {
         return
       }
 
       const snapshots = files
-        .filter((file) => file.content !== file.savedContent)
-        .map((file) => ({ relativePath: file.relativePath, content: file.content }))
+        .filter(
+          (file) => file.content !== file.savedContent || override?.path === file.relativePath
+        )
+        .map((file) => ({
+          relativePath: file.relativePath,
+          content: file.content,
+          expected: override?.path === file.relativePath ? override.expected : file.savedContent
+        }))
       if (snapshots.length === 0) return
       const savedProject = projectPath
       const requestGeneration = generation.current
-      savingRef.current = true
-      setSaving(true)
-      onSavingChange(true)
+      setSavingBusy(true)
       setOperationError('')
       const errors: string[] = []
 
@@ -500,14 +605,27 @@ function CodeEditorPage({
             const result = await window.api.saveProjectFile(
               savedProject,
               snapshot.relativePath,
-              snapshot.content
+              snapshot.content,
+              snapshot.expected
             )
             if (!result.success) {
+              if (result.conflict)
+                setExternalChanges((changes) => ({
+                  ...changes,
+                  [`${savedProject}\u0000${snapshot.relativePath}`]: {
+                    content: result.currentContent
+                  }
+                }))
               errors.push(
                 `${snapshot.relativePath}: ${result.error ?? 'Не удалось сохранить файл.'}`
               )
               continue
             }
+            setExternalChanges((changes) => {
+              const next = { ...changes }
+              delete next[`${savedProject}\u0000${snapshot.relativePath}`]
+              return next
+            })
             setSessions((current) => ({
               ...current,
               [savedProject]: markFileSaved(
@@ -526,12 +644,10 @@ function CodeEditorPage({
           setOperationError(`Не удалось сохранить: ${errors.join('; ')}`)
         }
       } finally {
-        savingRef.current = false
-        setSaving(false)
-        onSavingChange(false)
+        setSavingBusy(false)
       }
     },
-    [projectPath, setSessions, onSavingChange, blocked]
+    [projectPath, setSessions, setSavingBusy, blocked, parentBlocked, fileMenu, mutationBusy]
   )
 
   const handleSave = useCallback(async (): Promise<void> => {
@@ -541,6 +657,63 @@ function CodeEditorPage({
   const handleSaveAll = (): void => {
     void saveFiles(openFiles)
   }
+  const resolveExternal = useCallback(async (): Promise<void> => {
+    if (!projectPath || !externalConfirm || parentBlocked || savingRef.current) return
+    const file = openFiles.find((entry) => entry.relativePath === externalConfirm.path)
+    const change = externalChanges[`${projectPath}\u0000${externalConfirm.path}`]
+    if (!file || !change || change.content === undefined) {
+      setExternalConfirm(null)
+      return
+    }
+    if (externalConfirm.action === 'overwrite') {
+      setExternalConfirm(null)
+      await saveFiles([file], { path: file.relativePath, expected: change.content })
+      return
+    }
+    const savedProject = projectPath
+    const requestGeneration = generation.current
+    setSavingBusy(true)
+    try {
+      const result = await window.api.readProjectFile(savedProject, file.relativePath)
+      if (!result.success) throw new Error(result.error ?? 'Файл недоступен.')
+      if (generation.current !== requestGeneration) return
+      const content = result.content ?? ''
+      setSessions((sessions) => {
+        const session = sessions[savedProject] ?? emptyEditorSession
+        return {
+          ...sessions,
+          [savedProject]: {
+            ...session,
+            openFiles: session.openFiles.map((entry) =>
+              entry.relativePath === file.relativePath
+                ? { ...entry, content, savedContent: content }
+                : entry
+            )
+          }
+        }
+      })
+      setExternalChanges((changes) => {
+        const next = { ...changes }
+        delete next[`${savedProject}\u0000${file.relativePath}`]
+        return next
+      })
+      setExternalConfirm(null)
+    } catch (error) {
+      setOperationError(error instanceof Error ? error.message : 'Не удалось обновить файл.')
+      setExternalConfirm(null)
+    } finally {
+      setSavingBusy(false)
+    }
+  }, [
+    projectPath,
+    externalConfirm,
+    parentBlocked,
+    openFiles,
+    externalChanges,
+    saveFiles,
+    setSessions,
+    setSavingBusy
+  ])
   const hasDirtyFiles = openFiles.some((file) => file.content !== file.savedContent)
 
   const closeFileImmediately = (relativePath: string): void => {
@@ -696,6 +869,44 @@ function CodeEditorPage({
 
   return (
     <div className="code-editor-page">
+      {projectPath &&
+        openFiles.map((file) => {
+          const change = externalChanges[`${projectPath}\u0000${file.relativePath}`]
+          if (!change) return null
+          return (
+            <div className="external-file-notice" role="status" key={file.relativePath}>
+              <strong>{file.relativePath}</strong>:{' '}
+              {change.error ??
+                (change.content === null
+                  ? 'Файл удалён вне приложения. Текст вкладки сохранён.'
+                  : 'Файл изменён вне приложения. Текст вкладки сохранён.')}
+              {change.content !== undefined && (
+                <>
+                  {change.content !== null && (
+                    <button
+                      type="button"
+                      disabled={blocked || saving}
+                      onClick={() =>
+                        setExternalConfirm({ path: file.relativePath, action: 'reload' })
+                      }
+                    >
+                      Загрузить с диска
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    disabled={blocked || saving}
+                    onClick={() =>
+                      setExternalConfirm({ path: file.relativePath, action: 'overwrite' })
+                    }
+                  >
+                    {change.content === null ? 'Восстановить файл' : 'Сохранить мою версию'}
+                  </button>
+                </>
+              )}
+            </div>
+          )
+        })}
       {operationError && (
         <div className="project-tree-error" role="alert">
           {operationError}
@@ -860,6 +1071,60 @@ function CodeEditorPage({
         <button type="button">Monitor</button>
       </div>
 
+      {externalConfirm && (
+        <div className="editor-confirm-overlay">
+          <div
+            className="editor-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Внешнее изменение файла"
+            onKeyDown={(event) => {
+              if (event.key === 'Escape' && !saving) setExternalConfirm(null)
+              if (event.key === 'Tab') {
+                const buttons = Array.from(
+                  event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')
+                )
+                const index = buttons.indexOf(document.activeElement as HTMLButtonElement)
+                event.preventDefault()
+                buttons[
+                  (index + (event.shiftKey ? buttons.length - 1 : 1)) % buttons.length
+                ]?.focus()
+              }
+            }}
+          >
+            <h3>
+              {externalConfirm.action === 'reload'
+                ? 'Загрузить версию с диска?'
+                : 'Сохранить текст вкладки на диск?'}
+            </h3>
+            <p>{externalConfirm.path}</p>
+            <p>
+              {externalConfirm.action === 'reload'
+                ? 'Текущий текст вкладки будет заменён версией с диска. Несохранённые правки в этой вкладке будут потеряны.'
+                : 'Текущий текст вкладки заменит содержимое файла на диске. Если файл удалён, он будет создан заново. Перед записью версия будет проверена повторно.'}
+            </p>
+            <div className="editor-confirm-actions">
+              <button
+                type="button"
+                autoFocus
+                disabled={saving}
+                onClick={() => setExternalConfirm(null)}
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                disabled={saving || parentBlocked}
+                onClick={() => {
+                  void resolveExternal()
+                }}
+              >
+                Подтвердить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {contextMenu && isActive && !parentBlocked && (
         <div
           className="tree-menu-backdrop"

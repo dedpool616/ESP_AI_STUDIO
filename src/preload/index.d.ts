@@ -50,12 +50,15 @@ interface ProjectTreeResult {
 }
 
 interface ReadFileResult {
+  missing?: boolean
   success: boolean
   content?: string
   error?: string
 }
 
 interface SaveFileResult {
+  conflict?: boolean
+  currentContent?: string | null
   success: boolean
   error?: string
 }
@@ -122,7 +125,8 @@ interface ESPAIStudioAPI {
   saveProjectFile: (
     projectPath: string,
     relativePath: string,
-    content: string
+    content: string,
+    expectedContent: string | null
   ) => Promise<SaveFileResult>
 }
 

@@ -84,8 +84,19 @@ const api = {
     return ipcRenderer.invoke('project:read-file', projectPath, relativePath)
   },
 
-  saveProjectFile: (projectPath: string, relativePath: string, content: string) => {
-    return ipcRenderer.invoke('project:save-file', projectPath, relativePath, content)
+  saveProjectFile: (
+    projectPath: string,
+    relativePath: string,
+    content: string,
+    expectedContent: string | null
+  ) => {
+    return ipcRenderer.invoke(
+      'project:save-file',
+      projectPath,
+      relativePath,
+      content,
+      expectedContent
+    )
   }
 }
 

@@ -10,6 +10,7 @@ import { registerEnvironmentHandlers } from './environmentIpc'
 import { registerProjectFileHandlers } from './projectFiles'
 import { registerProjectSettings } from './projectSettings'
 import { registerProjectSearch } from './projectSearch'
+import { checkedSave } from './checkedSave'
 import { registerBuildHandlers, isBuildRunning, stopMonitor } from './projectBuild'
 
 const execFileAsync = promisify(execFile)
@@ -658,7 +659,8 @@ sdkconfig.old
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unable to read file.'
+        error: error instanceof Error ? error.message : 'Unable to read file.',
+        missing: (error as NodeJS.ErrnoException).code === 'ENOENT'
       }
     }
   })
@@ -668,21 +670,17 @@ sdkconfig.old
    */
   ipcMain.handle(
     'project:save-file',
-    async (_, projectPath: string, relativePath: string, content: string) => {
+    async (
+      _,
+      projectPath: string,
+      relativePath: string,
+      content: string,
+      expectedContent: unknown
+    ) => {
       try {
         const filePath = resolveSafeProjectPath(projectPath, relativePath)
 
-        const fileStats = await stat(filePath)
-
-        if (!fileStats.isFile()) {
-          throw new Error('Selected path is not a file.')
-        }
-
-        await writeFile(filePath, content, 'utf8')
-
-        return {
-          success: true
-        }
+        return await checkedSave(filePath, content, expectedContent)
       } catch (error) {
         return {
           success: false,

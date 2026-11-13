@@ -1470,3 +1470,28 @@ button {
   padding-top: 8px;
   padding-bottom: 8px;
 }
+.external-file-notice {
+  background: #3c321c;
+  color: #ffe6a5;
+  padding: 10px 14px;
+  overflow-wrap: anywhere;
+}
+
+.external-file-notice button {
+  background: #198754;
+  color: #fff;
+  border: 1px solid #198754;
+  border-radius: 6px;
+  margin: 6px;
+  padding: 5px 9px;
+  cursor: pointer;
+}
+
+.external-file-notice button:hover:not(:disabled) {
+  background: #157347;
+}
+
+.external-file-notice button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

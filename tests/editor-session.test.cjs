@@ -36,6 +36,7 @@ const deferred = () => {
 // Run the actual component handlers/effects with a tiny hook host. No Electron,
 // network, user project files, or additional dependencies are needed.
 function editorHost(api = {}) {
+  const diskTimers = []
   const slots = []
   let index = 0,
     tree,
@@ -91,7 +92,10 @@ function editorHost(api = {}) {
       self: {},
       window: {
         api: { getProjectTree: async () => ({ success: true, tree: [] }), ...api },
-        setTimeout: () => 0,
+        setTimeout: (callback, delay) => {
+          if (delay === 2500) diskTimers.push(callback)
+          return 0
+        },
         clearTimeout() {},
         addEventListener: (name, fn) => listeners.set(name, fn),
         removeEventListener: (name) => listeners.delete(name)
@@ -130,6 +134,12 @@ function editorHost(api = {}) {
   return {
     find,
     render,
+    async checkDisk() {
+      render()
+      diskTimers.shift()?.()
+      await new Promise(setImmediate)
+      render()
+    },
     get sessions() {
       return sessions
     },
@@ -280,6 +290,61 @@ test('typing during async save remains dirty and duplicate saves are blocked', a
   assert.equal(host.sessions.A.openFiles[0].savedContent, 'sent')
   assert.equal(host.sessions.A.openFiles[0].content, 'new draft')
   assert.equal(sessionsApi.hasUnsavedChanges(host.sessions.A), true)
+})
+
+test('external modification keeps editor draft and requires explicit overwrite confirmation', async () => {
+  const writes = []
+  const host = editorHost({
+    readProjectFile: async () => ({ success: true, content: 'disk' }),
+    saveProjectFile: async (...args) => {
+      writes.push(args)
+      return writes.length === 1
+        ? { success: false, conflict: true, currentContent: 'external', error: 'changed' }
+        : { success: true }
+    }
+  })
+  await host.open('main.c')
+  host.edit('my draft')
+  host.save()
+  await new Promise(setImmediate)
+  host.render()
+  assert.equal(host.sessions.A.openFiles[0].content, 'my draft')
+  assert.equal(host.sessions.A.openFiles[0].savedContent, 'disk')
+  assert.equal(writes[0][3], 'disk')
+  host
+    .find((node) => node.type === 'button' && node.props.children === 'Сохранить мою версию')
+    .props.onClick()
+  host.render()
+  assert.equal(writes.length, 1)
+  host
+    .find((node) => node.type === 'button' && node.props.children === 'Подтвердить')
+    .props.onClick()
+  await new Promise(setImmediate)
+  host.render()
+  assert.equal(writes[1][3], 'external')
+  assert.equal(host.sessions.A.openFiles[0].savedContent, 'my draft')
+})
+
+test('background check notices changed files and reload requires confirmation', async () => {
+  let disk = 'original'
+  const host = editorHost({ readProjectFile: async () => ({ success: true, content: disk }) })
+  await host.open('main.c')
+  host.edit('unsaved draft')
+  disk = 'outside change'
+  await host.checkDisk()
+  assert.ok(host.find((node) => node.props?.className === 'external-file-notice'))
+  assert.equal(host.sessions.A.openFiles[0].content, 'unsaved draft')
+  host
+    .find((node) => node.type === 'button' && node.props.children === 'Загрузить с диска')
+    .props.onClick()
+  host.render()
+  host
+    .find((node) => node.type === 'button' && node.props.children === 'Подтвердить')
+    .props.onClick()
+  await new Promise(setImmediate)
+  host.render()
+  assert.equal(host.sessions.A.openFiles[0].content, 'outside change')
+  assert.equal(host.sessions.A.openFiles[0].savedContent, 'outside change')
 })
 
 test('stale read is discarded even after A → B → A', async () => {
@@ -437,6 +502,7 @@ function mainHost(fsApi = require('node:fs/promises'), userData = 'unused') {
       if (name === './projectFiles') return { registerProjectFileHandlers() {} }
       if (name === './projectSettings') return { registerProjectSettings() {} }
       if (name === './projectSearch') return { registerProjectSearch() {} }
+      if (name === './checkedSave') return { checkedSave: async () => ({ success: true }) }
       if (name === './projectBuild')
         return { registerBuildHandlers() {}, isBuildRunning: () => false, stopMonitor() {} }
       if (name === 'electron')
