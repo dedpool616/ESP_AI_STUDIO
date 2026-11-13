@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { EditorLocation } from '../../../shared/buildDiagnostics'
+import FileCompareDialog, { type FileComparison } from '../components/FileCompareDialog'
 import { affectsFile, type FileAction } from '../../../shared/projectFiles'
 import {
   emptyEditorSession,
@@ -190,6 +191,7 @@ function CodeEditorPage({
   const [entryName, setEntryName] = useState('')
   const [mutationBusy, setMutationBusy] = useState(false)
   const [mutationError, setMutationError] = useState('')
+  const [comparison, setComparison] = useState<FileComparison | null>(null)
   const [externalChanges, setExternalChanges] = useState<
     Record<string, { content?: string | null; error?: string }>
   >({})
@@ -198,7 +200,13 @@ function CodeEditorPage({
     action: 'reload' | 'overwrite'
   } | null>(null)
   const [treeRevision, setTreeRevision] = useState(0)
-  const blocked = parentBlocked || !!fileMenu || !!contextMenu || mutationBusy || !!externalConfirm
+  const blocked =
+    parentBlocked ||
+    !!fileMenu ||
+    !!contextMenu ||
+    mutationBusy ||
+    !!externalConfirm ||
+    !!comparison
   const manage = (node: ProjectTreeNode, x: number, y: number): void => {
     if (!projectPath || parentBlocked || savingRef.current || mutationBusy || fileMenu) return
     setContextMenu({ node, x, y })
@@ -270,9 +278,19 @@ function CodeEditorPage({
     diskSnapshot.current = {
       projectPath,
       openFiles,
-      allowed: !parentBlocked && !fileMenu && !mutationBusy && !externalConfirm && !saving
+      allowed:
+        !parentBlocked && !fileMenu && !mutationBusy && !externalConfirm && !saving && !comparison
     }
-  }, [projectPath, openFiles, parentBlocked, fileMenu, mutationBusy, externalConfirm, saving])
+  }, [
+    projectPath,
+    openFiles,
+    parentBlocked,
+    fileMenu,
+    mutationBusy,
+    externalConfirm,
+    saving,
+    comparison
+  ])
   useEffect(() => {
     if (!projectPath || !isActive) return
     let cancelled = false
@@ -387,6 +405,7 @@ function CodeEditorPage({
     let cancelled = false
 
     const loadTree = async (): Promise<void> => {
+      setComparison(null)
       setExternalConfirm(null)
       setFileMenu(null)
       setContextMenu(null)
@@ -657,6 +676,32 @@ function CodeEditorPage({
   const handleSaveAll = (): void => {
     void saveFiles(openFiles)
   }
+  const openComparison = useCallback(
+    async (file: OpenFile): Promise<void> => {
+      if (!projectPath || blocked || savingRef.current) return
+      const requestGeneration = generation.current
+      setSavingBusy(true)
+      setOperationError('')
+      try {
+        const result = await window.api.readProjectFile(projectPath, file.relativePath)
+        if (generation.current !== requestGeneration) return
+        if (!result.success && !result.missing)
+          throw new Error(result.error ?? 'Не удалось прочитать файл.')
+        setComparison({
+          projectPath,
+          relativePath: file.relativePath,
+          original: result.success ? (result.content ?? '') : null,
+          modified: file.content,
+          language: getLanguage(file.name)
+        })
+      } catch (error) {
+        setOperationError(error instanceof Error ? error.message : 'Не удалось открыть сравнение.')
+      } finally {
+        setSavingBusy(false)
+      }
+    },
+    [projectPath, blocked, setSavingBusy]
+  )
   const resolveExternal = useCallback(async (): Promise<void> => {
     if (!projectPath || !externalConfirm || parentBlocked || savingRef.current) return
     const file = openFiles.find((entry) => entry.relativePath === externalConfirm.path)
@@ -882,6 +927,15 @@ function CodeEditorPage({
                   : 'Файл изменён вне приложения. Текст вкладки сохранён.')}
               {change.content !== undefined && (
                 <>
+                  <button
+                    type="button"
+                    disabled={blocked || saving}
+                    onClick={() => {
+                      void openComparison(file)
+                    }}
+                  >
+                    Сравнить
+                  </button>
                   {change.content !== null && (
                     <button
                       type="button"
@@ -1071,6 +1125,15 @@ function CodeEditorPage({
         <button type="button">Monitor</button>
       </div>
 
+      {comparison && isActive && !parentBlocked && (
+        <FileCompareDialog
+          comparison={comparison}
+          onClose={() => {
+            setComparison(null)
+            window.setTimeout(() => editorRef.current?.focus(), 0)
+          }}
+        />
+      )}
       {externalConfirm && (
         <div className="editor-confirm-overlay">
           <div

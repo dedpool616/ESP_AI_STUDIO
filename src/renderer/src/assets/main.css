@@ -1495,3 +1495,43 @@ button {
   opacity: 0.5;
   cursor: not-allowed;
 }
+.file-compare-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  display: flex;
+  padding: 24px;
+  background: #0009;
+}
+
+.file-compare-dialog {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  padding: 16px;
+  background: #171b22;
+  border: 1px solid #58647a;
+  border-radius: 10px;
+  color: #ddd;
+}
+
+.file-compare-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.file-compare-header p {
+  overflow-wrap: anywhere;
+}
+.file-compare-labels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 10px;
+  gap: 12px;
+}
+.file-compare-editor {
+  flex: 1;
+  min-height: 0;
+}

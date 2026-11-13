@@ -85,6 +85,7 @@ function editorHost(api = {}) {
       if (name.includes('?worker')) return function Worker() {}
       if (name.includes('shared/editorSession')) return sessionsApi
       if (name.includes('shared/projectFiles')) return projectFilesApi
+      if (name.includes('FileCompareDialog')) return { default: function FileCompareDialog() {} }
       if (name.includes('shared/build')) return { buildLabels: { idle: 'Не собирался' } }
       throw new Error(`Unexpected import: ${name}`)
     },
@@ -345,6 +346,45 @@ test('background check notices changed files and reload requires confirmation', 
   host.render()
   assert.equal(host.sessions.A.openFiles[0].content, 'outside change')
   assert.equal(host.sessions.A.openFiles[0].savedContent, 'outside change')
+})
+
+test('comparison reads fresh disk text and keeps the unsaved buffer unchanged', async () => {
+  let disk = 'original'
+  let writes = 0
+  const host = editorHost({
+    readProjectFile: async () =>
+      disk === null
+        ? { success: false, missing: true, error: 'missing' }
+        : { success: true, content: disk },
+    saveProjectFile: async () => {
+      writes++
+      return { success: true }
+    }
+  })
+  await host.open('main.c')
+  host.edit('my unsaved draft')
+  disk = 'external version'
+  await host.checkDisk()
+  disk = 'newer external version'
+  host.find((node) => node.type === 'button' && node.props.children === 'Сравнить').props.onClick()
+  await new Promise(setImmediate)
+  host.render()
+  let comparison = host.find((node) => node.props?.comparison)
+  assert.equal(comparison.props.comparison.original, 'newer external version')
+  assert.equal(comparison.props.comparison.modified, 'my unsaved draft')
+  assert.equal(host.sessions.A.openFiles[0].savedContent, 'original')
+  assert.equal(writes, 0)
+  comparison.props.onClose()
+  host.render()
+  disk = null
+  await host.checkDisk()
+  host.find((node) => node.type === 'button' && node.props.children === 'Сравнить').props.onClick()
+  await new Promise(setImmediate)
+  host.render()
+  comparison = host.find((node) => node.props?.comparison)
+  assert.equal(comparison.props.comparison.original, null)
+  assert.equal(comparison.props.comparison.modified, 'my unsaved draft')
+  assert.equal(writes, 0)
 })
 
 test('stale read is discarded even after A → B → A', async () => {
